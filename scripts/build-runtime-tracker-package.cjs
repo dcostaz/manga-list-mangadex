@@ -1,84 +1,190 @@
 #!/usr/bin/env node
 'use strict';
 
-/**
- * build-runtime-tracker-package.cjs
- *
- * Builds a distributable zip archive of the manga-list runtime tracker package.
- * The zip contains the source files needed to run the tracker in any environment.
- *
- * Output: dist/manga-list-tracker-<version>.zip
- */
-
-const archiver = require('archiver');
 const fs = require('fs');
 const path = require('path');
-
+const archiver = require('archiver');
 const pkg = require('../package.json');
+const { TRACKER_DTO_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'src', 'runtime', 'apiwrappers', 'trackerdtocontract.cjs'));
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const OUTPUT_FILENAME = `manga-list-tracker-${pkg.version}.zip`;
-const OUTPUT_PATH = path.join(DIST_DIR, OUTPUT_FILENAME);
 
-/** Files and directories to include in the package */
-const INCLUDE_PATTERNS = [
-  { src: 'src', dest: 'src' },
-  { src: 'package.json', dest: 'package.json' },
-  { src: 'README.md', dest: 'README.md' },
+/** @typedef {{ src: string, dest: string }} RuntimePackageFileMapping */
+
+/** @type {RuntimePackageFileMapping[]} */
+const FILE_MAPPINGS = [
+  {
+    src: path.join('src', 'runtime', 'apiwrappers', 'trackerdtocontract.cjs'),
+    dest: path.join('apiwrappers', 'trackerdtocontract.cjs').replace(/\\/g, '/'),
+  },
+  {
+    src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'api-wrapper-mangadex.cjs'),
+    dest: path.join('apiwrappers', 'reg-mangadex', 'api-wrapper-mangadex.cjs').replace(/\\/g, '/'),
+  },
+  {
+    src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'api-settings-mangadex.cjs'),
+    dest: path.join('apiwrappers', 'reg-mangadex', 'api-settings-mangadex.cjs').replace(/\\/g, '/'),
+  },
+  {
+    src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs'),
+    dest: path.join('apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs').replace(/\\/g, '/'),
+  },
+  {
+    src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'tracker-module.cjs'),
+    dest: path.join('apiwrappers', 'reg-mangadex', 'tracker-module.cjs').replace(/\\/g, '/'),
+  },
 ];
 
+/**
+ * @param {string[]} argv
+ * @returns {{ outputPath: string | null, hostApiVersion: string | null }}
+ */
+function parseCliArgs(argv) {
+  let outputPath = null;
+  let hostApiVersion = null;
+  /** @type {string[]} */
+  const positional = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--output') {
+      outputPath = argv[index + 1] || null;
+      index += 1;
+      continue;
+    }
+    if (token === '--host-api-version') {
+      hostApiVersion = argv[index + 1] || null;
+      index += 1;
+      continue;
+    }
+
+    positional.push(token);
+  }
+
+  if (!outputPath && positional.length > 0) {
+    outputPath = positional[0];
+  }
+
+  if (!hostApiVersion && positional.length > 1) {
+    hostApiVersion = positional[1];
+  }
+
+  return { outputPath, hostApiVersion };
+}
+
+/**
+ * @param {string | null} explicitVersion
+ * @returns {string}
+ */
+function resolveHostApiVersion(explicitVersion) {
+  const candidate = explicitVersion || process.env.MANGALIST_HOST_API_VERSION || '1.0.0';
+  return String(candidate).trim() || '1.0.0';
+}
+
+/**
+ * @param {string | null} explicitPath
+ * @returns {string}
+ */
+function resolveOutputPath(explicitPath) {
+  if (explicitPath && explicitPath.trim()) {
+    return path.resolve(explicitPath.trim());
+  }
+  const fileName = `manga-list-mangadex-runtime-${pkg.version}.zip`;
+  return path.join(DIST_DIR, fileName);
+}
+
+/**
+ * @returns {void}
+ */
 function ensureDistDir() {
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
 }
 
-function buildPackage() {
+/**
+ * @returns {{ serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string } }}
+ */
+function buildManifest(hostApiVersion) {
+  return {
+    serviceName: 'mangadex',
+    hostApiVersion,
+    dtoContractVersion: TRACKER_DTO_CONTRACT_VERSION,
+    wrapperId: 'mangadex',
+    entrypoints: {
+      trackerModule: 'apiwrappers/reg-mangadex/tracker-module.cjs',
+      mapperModule: 'apiwrappers/reg-mangadex/mapper-mangadex.cjs',
+    },
+  };
+}
+
+/**
+ * @param {{ outputPath?: string | null, hostApiVersion?: string | null }} [options]
+ * @returns {Promise<{ outputPath: string, manifest: { serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string } }, fileCount: number }>}
+ */
+function buildRuntimeTrackerPackage(options = {}) {
   ensureDistDir();
 
-  const output = fs.createWriteStream(OUTPUT_PATH);
+  const outputPath = resolveOutputPath(options.outputPath || null);
+  const hostApiVersion = resolveHostApiVersion(options.hostApiVersion || null);
+  const manifest = buildManifest(hostApiVersion);
+
+  const output = fs.createWriteStream(outputPath);
   const archive = archiver('zip', { zlib: { level: 9 } });
 
   return new Promise((resolve, reject) => {
     output.on('close', () => {
-      const sizeKb = (archive.pointer() / 1024).toFixed(2);
-      console.log(`✔ Package built: ${OUTPUT_FILENAME} (${sizeKb} KB)`);
-      resolve(OUTPUT_PATH);
+      resolve({
+        outputPath,
+        manifest,
+        fileCount: FILE_MAPPINGS.length + 1,
+      });
     });
 
-    archive.on('warning', (err) => {
-      if (err.code === 'ENOENT') {
-        console.warn('Warning:', err.message);
-      } else {
-        reject(err);
+    archive.on('warning', (error) => {
+      if (error.code === 'ENOENT') {
+        console.warn('Warning:', error.message);
+        return;
       }
+      reject(error);
     });
 
     archive.on('error', reject);
-
     archive.pipe(output);
 
-    for (const pattern of INCLUDE_PATTERNS) {
-      const fullSrc = path.join(ROOT_DIR, pattern.src);
-      if (!fs.existsSync(fullSrc)) {
-        console.warn(`Skipping missing path: ${pattern.src}`);
-        continue;
-      }
+    archive.append(JSON.stringify(manifest, null, 2), { name: 'tracker-package.json' });
 
-      const stat = fs.statSync(fullSrc);
-      if (stat.isDirectory()) {
-        archive.directory(fullSrc, pattern.dest);
-      } else {
-        archive.file(fullSrc, { name: pattern.dest });
+    for (const file of FILE_MAPPINGS) {
+      const fullSource = path.join(ROOT_DIR, file.src);
+      if (!fs.existsSync(fullSource)) {
+        reject(new Error(`Missing runtime package source file: ${file.src}`));
+        return;
       }
+      archive.file(fullSource, { name: file.dest });
     }
 
-    archive.finalize();
+    archive.finalize().catch(reject);
   });
 }
 
-buildPackage().catch((err) => {
-  console.error('Build failed:', err);
-  process.exit(1);
-});
+async function runFromCli() {
+  const args = parseCliArgs(process.argv.slice(2));
+  const result = await buildRuntimeTrackerPackage(args);
+  console.log(`Runtime tracker package built: ${result.outputPath}`);
+  console.log(`Manifest service=${result.manifest.serviceName} hostApiVersion=${result.manifest.hostApiVersion} dtoContractVersion=${result.manifest.dtoContractVersion}`);
+}
+
+if (require.main === module) {
+  runFromCli().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Build failed: ${message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  buildRuntimeTrackerPackage,
+  buildManifest,
+  resolveHostApiVersion,
+};

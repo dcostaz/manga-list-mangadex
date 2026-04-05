@@ -1,11 +1,12 @@
 {
   "name": "manga-list-mangadex",
   "version": "1.0.0",
-  "description": "Manga list tracker package builder for MangaDex",
+  "description": "Runtime tracker package source and builder for MangaDex",
   "main": "src/index.cjs",
   "scripts": {
     "build": "node scripts/build-runtime-tracker-package.cjs",
-    "test": "node --test tests/tracker.test.cjs"
+    "build:runtime": "node scripts/build-runtime-tracker-package.cjs",
+    "test": "node --test tests/tracker.test.cjs tests/build-runtime-tracker-package.test.cjs"
   },
   "keywords": [
     "manga",
@@ -15,6 +16,7 @@
   "author": "dcostaz",
   "license": "MIT",
   "dependencies": {
-    "archiver": "^7.0.1"
+    "archiver": "^7.0.1",
+    "jszip": "^3.10.1"
   }
 }
