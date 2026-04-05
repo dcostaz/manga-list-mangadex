@@ -27,6 +27,10 @@ const FILE_MAPPINGS = [
     dest: path.join('apiwrappers', 'reg-mangadex', 'api-settings-mangadex.cjs').replace(/\\/g, '/'),
   },
   {
+    src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mangadex-api-settings.json'),
+    dest: path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.json').replace(/\\/g, '/'),
+  },
+  {
     src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs'),
     dest: path.join('apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs').replace(/\\/g, '/'),
   },
@@ -104,7 +108,7 @@ function ensureDistDir() {
 }
 
 /**
- * @returns {{ serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string } }}
+ * @returns {{ serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string, settingsFile: string } }}
  */
 function buildManifest(hostApiVersion) {
   return {
@@ -115,13 +119,14 @@ function buildManifest(hostApiVersion) {
     entrypoints: {
       trackerModule: 'apiwrappers/reg-mangadex/tracker-module.cjs',
       mapperModule: 'apiwrappers/reg-mangadex/mapper-mangadex.cjs',
+      settingsFile: 'apiwrappers/reg-mangadex/mangadex-api-settings.json',
     },
   };
 }
 
 /**
  * @param {{ outputPath?: string | null, hostApiVersion?: string | null }} [options]
- * @returns {Promise<{ outputPath: string, manifest: { serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string } }, fileCount: number }>}
+ * @returns {Promise<{ outputPath: string, manifest: { serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string, settingsFile: string } }, fileCount: number }>}
  */
 function buildRuntimeTrackerPackage(options = {}) {
   ensureDistDir();

@@ -28,6 +28,7 @@ test('buildManifest returns runtime loader compatible metadata', () => {
   assert.equal(typeof manifest.dtoContractVersion, 'string');
   assert.equal(manifest.entrypoints.trackerModule, 'apiwrappers/reg-mangadex/tracker-module.cjs');
   assert.equal(manifest.entrypoints.mapperModule, 'apiwrappers/reg-mangadex/mapper-mangadex.cjs');
+  assert.equal(manifest.entrypoints.settingsFile, 'apiwrappers/reg-mangadex/mangadex-api-settings.json');
 });
 
 test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runtime files', async () => {
@@ -47,6 +48,7 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     assert.deepEqual(entries, [
       'apiwrappers/reg-mangadex/api-settings-mangadex.cjs',
       'apiwrappers/reg-mangadex/api-wrapper-mangadex.cjs',
+      'apiwrappers/reg-mangadex/mangadex-api-settings.json',
       'apiwrappers/reg-mangadex/mapper-mangadex.cjs',
       'apiwrappers/reg-mangadex/tracker-module.cjs',
       'apiwrappers/trackerdtocontract.cjs',
@@ -62,6 +64,7 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     assert.equal(manifest.hostApiVersion, '1.2.3');
     assert.equal(manifest.entrypoints.trackerModule, 'apiwrappers/reg-mangadex/tracker-module.cjs');
     assert.equal(manifest.entrypoints.mapperModule, 'apiwrappers/reg-mangadex/mapper-mangadex.cjs');
+    assert.equal(manifest.entrypoints.settingsFile, 'apiwrappers/reg-mangadex/mangadex-api-settings.json');
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }

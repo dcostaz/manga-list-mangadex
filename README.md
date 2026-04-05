@@ -22,8 +22,9 @@ Build output contains:
 2. `apiwrappers/trackerdtocontract.cjs`
 3. `apiwrappers/reg-mangadex/api-wrapper-mangadex.cjs`
 4. `apiwrappers/reg-mangadex/api-settings-mangadex.cjs`
-5. `apiwrappers/reg-mangadex/mapper-mangadex.cjs`
-6. `apiwrappers/reg-mangadex/tracker-module.cjs`
+5. `apiwrappers/reg-mangadex/mangadex-api-settings.json`
+6. `apiwrappers/reg-mangadex/mapper-mangadex.cjs`
+7. `apiwrappers/reg-mangadex/tracker-module.cjs`
 
 ## Test
 
