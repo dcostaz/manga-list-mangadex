@@ -9,6 +9,9 @@ const { TRACKER_DTO_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'src
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
+const SETTINGS_DEFINITION_SOURCE = path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mangadex-api-settings.definition.json');
+const SETTINGS_VALUES_SOURCE = path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mangadex-api-settings.values.json');
+const SETTINGS_EFFECTIVE_DEST = path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.json').replace(/\\/g, '/');
 
 /** @typedef {{ src: string, dest: string }} RuntimePackageFileMapping */
 
@@ -27,8 +30,12 @@ const FILE_MAPPINGS = [
     dest: path.join('apiwrappers', 'reg-mangadex', 'api-settings-mangadex.cjs').replace(/\\/g, '/'),
   },
   {
-    src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mangadex-api-settings.json'),
-    dest: path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.json').replace(/\\/g, '/'),
+    src: SETTINGS_DEFINITION_SOURCE,
+    dest: path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.definition.json').replace(/\\/g, '/'),
+  },
+  {
+    src: SETTINGS_VALUES_SOURCE,
+    dest: path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.values.json').replace(/\\/g, '/'),
   },
   {
     src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs'),
@@ -108,6 +115,121 @@ function ensureDistDir() {
 }
 
 /**
+ * @param {string} fullPath
+ * @param {string} label
+ * @returns {Record<string, unknown>}
+ */
+function readJsonObjectFile(fullPath, label) {
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Missing ${label} file: ${fullPath}`);
+  }
+
+  const raw = fs.readFileSync(fullPath, 'utf8');
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Invalid JSON in ${label} file '${fullPath}': ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Expected ${label} file to contain an object: ${fullPath}`);
+  }
+
+  return /** @type {Record<string, unknown>} */ (parsed);
+}
+
+/**
+ * @param {Record<string, unknown>} source
+ * @param {string} key
+ * @param {string} label
+ * @returns {Record<string, unknown>}
+ */
+function getObjectProperty(source, key, label) {
+  const value = source[key];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Expected object property '${key}' in ${label}`);
+  }
+  return /** @type {Record<string, unknown>} */ (value);
+}
+
+/**
+ * Build the effective settings document used by host runtime loading.
+ * Sources are split into definition and values, then merged deterministically.
+ *
+ * @returns {{ metadata: Record<string, unknown>, schema: Record<string, unknown>, settings: Record<string, unknown> }}
+ */
+function buildEffectiveSettingsDocument() {
+  const definitionPath = path.join(ROOT_DIR, SETTINGS_DEFINITION_SOURCE);
+  const valuesPath = path.join(ROOT_DIR, SETTINGS_VALUES_SOURCE);
+
+  const definitionDocument = readJsonObjectFile(definitionPath, 'settings definition');
+  const valuesDocument = readJsonObjectFile(valuesPath, 'settings values');
+
+  const definitionMetadata = getObjectProperty(definitionDocument, 'metadata', 'settings definition');
+  const definitionSchema = getObjectProperty(definitionDocument, 'schema', 'settings definition');
+  const valuesMetadata = getObjectProperty(valuesDocument, 'metadata', 'settings values');
+  const valuesSettings = getObjectProperty(valuesDocument, 'settings', 'settings values');
+
+  const definitionContractVersion = typeof definitionMetadata.settingsContractVersion === 'string'
+    ? definitionMetadata.settingsContractVersion.trim()
+    : '';
+  const valuesContractVersion = typeof valuesMetadata.settingsContractVersion === 'string'
+    ? valuesMetadata.settingsContractVersion.trim()
+    : '';
+  if (definitionContractVersion && valuesContractVersion && definitionContractVersion !== valuesContractVersion) {
+    throw new Error(`Settings contract version mismatch: definition=${definitionContractVersion} values=${valuesContractVersion}`);
+  }
+
+  /** @type {Record<string, unknown>} */
+  const effectiveSettings = {};
+
+  const schemaEntries = Object.entries(definitionSchema);
+  for (const [settingKey, schemaEntryRaw] of schemaEntries) {
+    const schemaEntry = schemaEntryRaw && typeof schemaEntryRaw === 'object' && !Array.isArray(schemaEntryRaw)
+      ? /** @type {Record<string, unknown>} */ (schemaEntryRaw)
+      : null;
+    if (!schemaEntry) {
+      throw new Error(`Invalid schema definition for key '${settingKey}'`);
+    }
+
+    const hasExplicitValue = Object.prototype.hasOwnProperty.call(valuesSettings, settingKey);
+    if (hasExplicitValue) {
+      effectiveSettings[settingKey] = valuesSettings[settingKey];
+      continue;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(schemaEntry, 'default')) {
+      effectiveSettings[settingKey] = schemaEntry.default;
+      continue;
+    }
+
+    const required = schemaEntry.required === true;
+    if (required) {
+      throw new Error(`Missing required setting value for key '${settingKey}'`);
+    }
+  }
+
+  for (const settingKey of Object.keys(valuesSettings)) {
+    if (!Object.prototype.hasOwnProperty.call(definitionSchema, settingKey)) {
+      throw new Error(`Values file includes undefined setting key '${settingKey}'`);
+    }
+  }
+
+  return {
+    metadata: {
+      ...definitionMetadata,
+      sources: {
+        definitionFile: path.basename(SETTINGS_DEFINITION_SOURCE),
+        valuesFile: path.basename(SETTINGS_VALUES_SOURCE),
+      },
+    },
+    schema: definitionSchema,
+    settings: effectiveSettings,
+  };
+}
+
+/**
  * @returns {{ serviceName: string, hostApiVersion: string, dtoContractVersion: string, wrapperId: string, entrypoints: { trackerModule: string, mapperModule: string, settingsFile: string } }}
  */
 function buildManifest(hostApiVersion) {
@@ -134,6 +256,7 @@ function buildRuntimeTrackerPackage(options = {}) {
   const outputPath = resolveOutputPath(options.outputPath || null);
   const hostApiVersion = resolveHostApiVersion(options.hostApiVersion || null);
   const manifest = buildManifest(hostApiVersion);
+  const effectiveSettings = buildEffectiveSettingsDocument();
 
   const output = fs.createWriteStream(outputPath);
   const archive = archiver('zip', { zlib: { level: 9 } });
@@ -143,7 +266,7 @@ function buildRuntimeTrackerPackage(options = {}) {
       resolve({
         outputPath,
         manifest,
-        fileCount: FILE_MAPPINGS.length + 1,
+        fileCount: FILE_MAPPINGS.length + 2,
       });
     });
 
@@ -159,6 +282,7 @@ function buildRuntimeTrackerPackage(options = {}) {
     archive.pipe(output);
 
     archive.append(JSON.stringify(manifest, null, 2), { name: 'tracker-package.json' });
+  archive.append(JSON.stringify(effectiveSettings, null, 2), { name: SETTINGS_EFFECTIVE_DEST });
 
     for (const file of FILE_MAPPINGS) {
       const fullSource = path.join(ROOT_DIR, file.src);
@@ -190,6 +314,7 @@ if (require.main === module) {
 
 module.exports = {
   buildRuntimeTrackerPackage,
+  buildEffectiveSettingsDocument,
   buildManifest,
   resolveHostApiVersion,
 };

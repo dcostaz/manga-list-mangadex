@@ -22,9 +22,19 @@ Build output contains:
 2. `apiwrappers/trackerdtocontract.cjs`
 3. `apiwrappers/reg-mangadex/api-wrapper-mangadex.cjs`
 4. `apiwrappers/reg-mangadex/api-settings-mangadex.cjs`
-5. `apiwrappers/reg-mangadex/mangadex-api-settings.json`
-6. `apiwrappers/reg-mangadex/mapper-mangadex.cjs`
-7. `apiwrappers/reg-mangadex/tracker-module.cjs`
+5. `apiwrappers/reg-mangadex/mangadex-api-settings.definition.json`
+6. `apiwrappers/reg-mangadex/mangadex-api-settings.values.json`
+7. `apiwrappers/reg-mangadex/mangadex-api-settings.json` (generated effective settings used at runtime)
+8. `apiwrappers/reg-mangadex/mapper-mangadex.cjs`
+9. `apiwrappers/reg-mangadex/tracker-module.cjs`
+
+Settings source of truth in this repository is split into:
+
+1. `src/runtime/apiwrappers/reg-mangadex/mangadex-api-settings.definition.json`
+2. `src/runtime/apiwrappers/reg-mangadex/mangadex-api-settings.values.json`
+
+The build script validates and merges both source files into the runtime payload:
+`apiwrappers/reg-mangadex/mangadex-api-settings.json`.
 
 ## Test
 

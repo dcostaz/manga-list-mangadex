@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "componentName": "MangaDexAPI",
+    "description": "MangaDex runtime tracker package settings values",
+    "version": "1.0.0",
+    "settingsContractVersion": "1.0.0"
+  },
+  "settings": {
+    "serviceName": "mangadex",
+    "api.baseUrl": "https://api.mangadex.org",
+    "api.authUrl": "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect",
+    "api.endPoints.manga.template": "${baseUrl}/manga",
+    "api.endPoints.mangaById.template": "${baseUrl}/manga/${id}",
+    "network.timeoutMs": 15000,
+    "search.limit": 10
+  }
+}

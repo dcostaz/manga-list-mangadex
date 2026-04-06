@@ -9,6 +9,7 @@ const JSZip = require('jszip');
 
 const {
   buildRuntimeTrackerPackage,
+  buildEffectiveSettingsDocument,
   buildManifest,
 } = require('../scripts/build-runtime-tracker-package.cjs');
 
@@ -31,6 +32,17 @@ test('buildManifest returns runtime loader compatible metadata', () => {
   assert.equal(manifest.entrypoints.settingsFile, 'apiwrappers/reg-mangadex/mangadex-api-settings.json');
 });
 
+test('buildEffectiveSettingsDocument merges definition and values into runtime payload', () => {
+  const effective = buildEffectiveSettingsDocument();
+
+  assert.equal(effective.metadata.componentName, 'MangaDexAPI');
+  assert.equal(effective.metadata.settingsContractVersion, '1.0.0');
+  assert.equal(typeof effective.schema['api.baseUrl'], 'object');
+  assert.equal(effective.settings.serviceName, 'mangadex');
+  assert.equal(effective.settings['api.baseUrl'], 'https://api.mangadex.org');
+  assert.equal(effective.settings['search.limit'], 10);
+});
+
 test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runtime files', async () => {
   const tempDir = await createTempDir();
   const outputPath = path.join(tempDir, 'mangadex-runtime.zip');
@@ -48,7 +60,9 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     assert.deepEqual(entries, [
       'apiwrappers/reg-mangadex/api-settings-mangadex.cjs',
       'apiwrappers/reg-mangadex/api-wrapper-mangadex.cjs',
+      'apiwrappers/reg-mangadex/mangadex-api-settings.definition.json',
       'apiwrappers/reg-mangadex/mangadex-api-settings.json',
+      'apiwrappers/reg-mangadex/mangadex-api-settings.values.json',
       'apiwrappers/reg-mangadex/mapper-mangadex.cjs',
       'apiwrappers/reg-mangadex/tracker-module.cjs',
       'apiwrappers/trackerdtocontract.cjs',
@@ -65,6 +79,14 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     assert.equal(manifest.entrypoints.trackerModule, 'apiwrappers/reg-mangadex/tracker-module.cjs');
     assert.equal(manifest.entrypoints.mapperModule, 'apiwrappers/reg-mangadex/mapper-mangadex.cjs');
     assert.equal(manifest.entrypoints.settingsFile, 'apiwrappers/reg-mangadex/mangadex-api-settings.json');
+
+    const settingsFile = zip.file('apiwrappers/reg-mangadex/mangadex-api-settings.json');
+    assert.ok(settingsFile);
+    const settingsRaw = await settingsFile.async('string');
+    const effectiveSettings = JSON.parse(settingsRaw);
+    assert.equal(effectiveSettings.metadata.componentName, 'MangaDexAPI');
+    assert.equal(effectiveSettings.settings.serviceName, 'mangadex');
+    assert.equal(effectiveSettings.settings['network.timeoutMs'], 15000);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }

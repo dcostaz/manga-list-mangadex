@@ -40,6 +40,21 @@ class MangaDexAPISettings {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new Error(`Invalid MangaDex settings payload at ${settingsPath}`);
       }
+
+      const metadata = parsed.metadata && typeof parsed.metadata === 'object' && !Array.isArray(parsed.metadata)
+        ? parsed.metadata
+        : null;
+      const schema = parsed.schema && typeof parsed.schema === 'object' && !Array.isArray(parsed.schema)
+        ? parsed.schema
+        : null;
+      const settings = parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)
+        ? parsed.settings
+        : null;
+
+      if (!metadata || !schema || !settings) {
+        throw new Error(`Expected MangaDex settings payload with metadata/schema/settings sections at ${settingsPath}`);
+      }
+
       fileSettings = parsed;
     }
 

@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "componentName": "MangaDexAPI",
+    "description": "MangaDex runtime tracker package settings definition",
+    "version": "1.0.0",
+    "settingsContractVersion": "1.0.0"
+  },
+  "schema": {
+    "serviceName": {
+      "type": "string",
+      "required": true,
+      "default": "mangadex",
+      "description": "Tracker service name"
+    },
+    "api.baseUrl": {
+      "type": "string",
+      "required": true,
+      "default": "https://api.mangadex.org",
+      "description": "Base URL for MangaDex API"
+    },
+    "api.authUrl": {
+      "type": "string",
+      "required": true,
+      "default": "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect",
+      "description": "OpenID Connect auth URL"
+    },
+    "api.endPoints.manga.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/manga",
+      "description": "Search/list manga endpoint template"
+    },
+    "api.endPoints.mangaById.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/manga/${id}",
+      "description": "Fetch manga by id endpoint template"
+    },
+    "network.timeoutMs": {
+      "type": "number",
+      "required": true,
+      "default": 15000,
+      "description": "Request timeout in milliseconds"
+    },
+    "search.limit": {
+      "type": "number",
+      "required": true,
+      "default": 10,
+      "description": "Default number of search results"
+    }
+  }
+}
