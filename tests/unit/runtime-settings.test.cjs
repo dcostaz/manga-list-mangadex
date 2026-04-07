@@ -10,6 +10,7 @@ const os = require('os');
 const MangaDexAPISettings = require(path.join(
   __dirname,
   '..',
+  '..',
   'src',
   'runtime',
   'apiwrappers',
@@ -21,12 +22,14 @@ const {
 } = require(path.join(
   __dirname,
   '..',
+  '..',
   'scripts',
   'build-runtime-tracker-package.cjs',
 ));
 
 const mangadexValuesPath = path.join(
   __dirname,
+  '..',
   '..',
   'src',
   'runtime',
@@ -36,6 +39,7 @@ const mangadexValuesPath = path.join(
 );
 const mangaupdatesValuesPath = path.join(
   __dirname,
+  '..',
   '..',
   '..',
   'manga-list-mangaupdates',

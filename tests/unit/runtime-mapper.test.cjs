@@ -7,6 +7,7 @@ const path = require('path');
 const MangaDexTrackerMapper = require(path.join(
   __dirname,
   '..',
+  '..',
   'src',
   'runtime',
   'apiwrappers',
@@ -17,6 +18,7 @@ const {
   TRACKER_DTO_CONTRACT_VERSION,
 } = require(path.join(
   __dirname,
+  '..',
   '..',
   'src',
   'runtime',

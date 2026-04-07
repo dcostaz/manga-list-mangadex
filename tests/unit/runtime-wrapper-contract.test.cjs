@@ -7,6 +7,7 @@ const path = require('path');
 const MangaDexAPIWrapper = require(path.join(
   __dirname,
   '..',
+  '..',
   'src',
   'runtime',
   'apiwrappers',
@@ -15,6 +16,7 @@ const MangaDexAPIWrapper = require(path.join(
 ));
 const MangaDexAPISettings = require(path.join(
   __dirname,
+  '..',
   '..',
   'src',
   'runtime',

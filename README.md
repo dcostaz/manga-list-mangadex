@@ -65,6 +65,8 @@ Type definitions governance:
 npm test
 ```
 
+`npm test` runs the unit suites under `tests/unit/`.
+
 GitHub Actions runs the same test command on every push and pull request via:
 `.github/workflows/tests.yml`.
 
@@ -73,15 +75,19 @@ GitHub Actions also builds and publishes the runtime zip on pushes to main via:
 
 Final test suites:
 
-1. `tests/build-runtime-tracker-package.test.cjs`
-2. `tests/runtime-mapper.test.cjs`
-3. `tests/runtime-settings.test.cjs`
-4. `tests/runtime-wrapper-contract.test.cjs`
-5. `tests/runtime-wrapper-init.test.cjs`
-6. `tests/runtime-wrapper-token.test.cjs`
-7. `tests/runtime-wrapper-read.test.cjs`
-8. `tests/runtime-wrapper-write.test.cjs`
-9. `tests/runtime-wrapper-search-cover.test.cjs`
+1. `tests/unit/build-runtime-tracker-package.test.cjs`
+2. `tests/unit/runtime-mapper.test.cjs`
+3. `tests/unit/runtime-settings.test.cjs`
+4. `tests/unit/runtime-wrapper-contract.test.cjs`
+5. `tests/unit/runtime-wrapper-init.test.cjs`
+6. `tests/unit/runtime-wrapper-token.test.cjs`
+7. `tests/unit/runtime-wrapper-read.test.cjs`
+8. `tests/unit/runtime-wrapper-write.test.cjs`
+9. `tests/unit/runtime-wrapper-search-cover.test.cjs`
+
+Integration folder:
+
+1. `tests/integration/` (reserved for manual or live integration suites)
 
 These suites cover build/manifest compatibility, mapper normalization,
 settings contracts and baseline matrix checks, wrapper lifecycle,

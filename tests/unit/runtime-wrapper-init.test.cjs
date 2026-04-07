@@ -9,6 +9,7 @@ const os = require('os');
 const MangaDexAPIWrapper = require(path.join(
   __dirname,
   '..',
+  '..',
   'src',
   'runtime',
   'apiwrappers',
@@ -19,6 +20,7 @@ const {
   buildEffectiveSettingsDocument,
 } = require(path.join(
   __dirname,
+  '..',
   '..',
   'scripts',
   'build-runtime-tracker-package.cjs',

@@ -9,6 +9,7 @@ const fs = require('fs').promises;
 const MangaDexAPIWrapper = require(path.join(
   __dirname,
   '..',
+  '..',
   'src',
   'runtime',
   'apiwrappers',

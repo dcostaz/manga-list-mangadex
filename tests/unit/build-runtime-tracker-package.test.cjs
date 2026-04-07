@@ -8,13 +8,13 @@ const fs = require('fs').promises;
 const JSZip = require('jszip');
 const {
   TRACKER_SETTINGS_CONTRACT_VERSION,
-} = require('../src/runtime/apiwrappers/trackerdtocontract.cjs');
+} = require('../../src/runtime/apiwrappers/trackerdtocontract.cjs');
 
 const {
   buildRuntimeTrackerPackage,
   buildEffectiveSettingsDocument,
   buildManifest,
-} = require('../scripts/build-runtime-tracker-package.cjs');
+} = require('../../scripts/build-runtime-tracker-package.cjs');
 
 /**
  * @returns {Promise<string>}
