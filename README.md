@@ -79,6 +79,17 @@ For non-interactive shells, set `MDX_TEST_USERNAME`, `MDX_TEST_PASSWORD`, `MDX_T
 By default it prints verbose auth progress and a masked token preview.
 Set `MDX_TEST_SHOW_FULL_TOKEN=1` if you explicitly want the full token printed.
 
+Manual local search integration test (interactive credentials + query prompt):
+
+```bash
+npm run test:search:interactive
+```
+
+This test is local-only and intentionally excluded from default `npm test` and CI runs.
+The runner prompts for temporary real MangaDex credentials (`username`, `password`, `clientId`, `clientSecret`) and a live search query.
+For non-interactive shells, set `MDX_TEST_USERNAME`, `MDX_TEST_PASSWORD`, `MDX_TEST_CLIENT_ID`, `MDX_TEST_CLIENT_SECRET`, and `MDX_TEST_SEARCH_QUERY` before running the command.
+Set `MDX_TEST_SHOW_FULL_SEARCH_PAYLOAD=1` if you want the full search payload logged.
+
 GitHub Actions runs the same test command on every push and pull request via:
 `.github/workflows/tests.yml`.
 
@@ -100,6 +111,7 @@ Final test suites:
 Integration folder:
 
 1. `tests/integration/runtime-wrapper-auth-integration.manual.cjs`
+2. `tests/integration/runtime-wrapper-search-integration.manual.cjs`
 
 These suites cover build/manifest compatibility, mapper normalization,
 settings contracts and baseline matrix checks, wrapper lifecycle,
