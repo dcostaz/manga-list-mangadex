@@ -24,7 +24,7 @@ Build output contains:
 4. `apiwrappers/reg-mangadex/api-settings-mangadex.cjs`
 5. `apiwrappers/reg-mangadex/mangadex-api-settings.definition.json`
 6. `apiwrappers/reg-mangadex/mangadex-api-settings.values.json`
-7. `apiwrappers/reg-mangadex/mangadex-api-settings.json` (generated effective settings used at runtime)
+7. `apiwrappers/reg-mangadex/mangadex-api-settings.json` (generated effective settings used at runtime; not an authored source file)
 8. `apiwrappers/reg-mangadex/mapper-mangadex.cjs`
 9. `apiwrappers/reg-mangadex/tracker-module.cjs`
 
@@ -35,6 +35,17 @@ Settings source of truth in this repository is split into:
 
 The build script validates and merges both source files into the runtime payload:
 `apiwrappers/reg-mangadex/mangadex-api-settings.json`.
+
+Note: Runtime manifest entrypoint `settingsFile` points to the generated effective file above,
+while repository source of truth remains the definition/values pair.
+
+Contract version governance:
+
+1. DTO contract version comes from `src/runtime/apiwrappers/trackerdtocontract.cjs` (`TRACKER_DTO_CONTRACT_VERSION`).
+2. Settings contract version is centrally defined in the same file (`TRACKER_SETTINGS_CONTRACT_VERSION`).
+3. Build enforces that both `mangadex-api-settings.definition.json` and `mangadex-api-settings.values.json`
+	use `metadata.settingsContractVersion` matching `TRACKER_SETTINGS_CONTRACT_VERSION`.
+4. Build fails fast on mismatch to prevent contract drift.
 
 ## Test
 

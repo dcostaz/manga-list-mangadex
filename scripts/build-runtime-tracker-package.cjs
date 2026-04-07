@@ -5,7 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 const pkg = require('../package.json');
-const { TRACKER_DTO_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'src', 'runtime', 'apiwrappers', 'trackerdtocontract.cjs'));
+const {
+  TRACKER_DTO_CONTRACT_VERSION,
+  TRACKER_SETTINGS_CONTRACT_VERSION,
+} = require(path.join(__dirname, '..', 'src', 'runtime', 'apiwrappers', 'trackerdtocontract.cjs'));
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -177,7 +180,20 @@ function buildEffectiveSettingsDocument() {
   const valuesContractVersion = typeof valuesMetadata.settingsContractVersion === 'string'
     ? valuesMetadata.settingsContractVersion.trim()
     : '';
-  if (definitionContractVersion && valuesContractVersion && definitionContractVersion !== valuesContractVersion) {
+
+  if (!definitionContractVersion) {
+    throw new Error('settings definition metadata.settingsContractVersion is required');
+  }
+  if (!valuesContractVersion) {
+    throw new Error('settings values metadata.settingsContractVersion is required');
+  }
+  if (definitionContractVersion !== TRACKER_SETTINGS_CONTRACT_VERSION) {
+    throw new Error(`settings definition metadata.settingsContractVersion must match TRACKER_SETTINGS_CONTRACT_VERSION (${TRACKER_SETTINGS_CONTRACT_VERSION}), got '${definitionContractVersion}'`);
+  }
+  if (valuesContractVersion !== TRACKER_SETTINGS_CONTRACT_VERSION) {
+    throw new Error(`settings values metadata.settingsContractVersion must match TRACKER_SETTINGS_CONTRACT_VERSION (${TRACKER_SETTINGS_CONTRACT_VERSION}), got '${valuesContractVersion}'`);
+  }
+  if (definitionContractVersion !== valuesContractVersion) {
     throw new Error(`Settings contract version mismatch: definition=${definitionContractVersion} values=${valuesContractVersion}`);
   }
 
@@ -219,6 +235,7 @@ function buildEffectiveSettingsDocument() {
   return {
     metadata: {
       ...definitionMetadata,
+      settingsContractVersion: TRACKER_SETTINGS_CONTRACT_VERSION,
       sources: {
         definitionFile: path.basename(SETTINGS_DEFINITION_SOURCE),
         valuesFile: path.basename(SETTINGS_VALUES_SOURCE),

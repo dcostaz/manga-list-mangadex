@@ -6,6 +6,9 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs').promises;
 const JSZip = require('jszip');
+const {
+  TRACKER_SETTINGS_CONTRACT_VERSION,
+} = require('../src/runtime/apiwrappers/trackerdtocontract.cjs');
 
 const {
   buildRuntimeTrackerPackage,
@@ -29,14 +32,20 @@ test('buildManifest returns runtime loader compatible metadata', () => {
   assert.equal(typeof manifest.dtoContractVersion, 'string');
   assert.equal(manifest.entrypoints.trackerModule, 'apiwrappers/reg-mangadex/tracker-module.cjs');
   assert.equal(manifest.entrypoints.mapperModule, 'apiwrappers/reg-mangadex/mapper-mangadex.cjs');
+  // settingsFile points to the build-generated effective payload, not a source-controlled file.
   assert.equal(manifest.entrypoints.settingsFile, 'apiwrappers/reg-mangadex/mangadex-api-settings.json');
+});
+
+test('exports centralized tracker settings contract version', () => {
+  assert.equal(typeof TRACKER_SETTINGS_CONTRACT_VERSION, 'string');
+  assert.equal(TRACKER_SETTINGS_CONTRACT_VERSION, '1.0.0');
 });
 
 test('buildEffectiveSettingsDocument merges definition and values into runtime payload', () => {
   const effective = buildEffectiveSettingsDocument();
 
   assert.equal(effective.metadata.componentName, 'MangaDexAPI');
-  assert.equal(effective.metadata.settingsContractVersion, '1.0.0');
+  assert.equal(effective.metadata.settingsContractVersion, TRACKER_SETTINGS_CONTRACT_VERSION);
   assert.equal(typeof effective.schema['api.baseUrl'], 'object');
   assert.equal(typeof effective.schema['api.endpoints.manga.template'], 'object');
   assert.equal(effective.settings['api.baseUrl'], 'https://api.mangadex.org');
@@ -82,6 +91,7 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     assert.equal(manifest.entrypoints.settingsFile, 'apiwrappers/reg-mangadex/mangadex-api-settings.json');
 
     const settingsFile = zip.file('apiwrappers/reg-mangadex/mangadex-api-settings.json');
+    // This file is generated at package build time from definition + values sources.
     assert.ok(settingsFile);
     const settingsRaw = await settingsFile.async('string');
     const effectiveSettings = JSON.parse(settingsRaw);
