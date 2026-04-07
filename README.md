@@ -4,6 +4,15 @@ Runtime tracker package source for MangaDex.
 
 This repository builds a runtime-installable zip artifact compatible with manga-list `TrackerPackageLoader`.
 
+Current runtime wrapper port status:
+
+1. Wave 0 mapper baseline implemented in `mapper-mangadex.cjs` with compatibility for compact and enriched raw payload shapes.
+2. Wave 1 baseline implemented in `api-wrapper-mangadex.cjs` for auth/token caching, read/search transport methods, status/subscription writes, and cover discovery/download helpers.
+3. Wave 2 hardening coverage added for refresh-token fallback, status cache behavior, and unfollow/updateStatus cache semantics.
+4. Wave 3 fidelity coverage added for exact-first search ranking, fuzzy cover fallback, progress events, and volume-aware cover ordering.
+5. Mapper boundary compatibility preserved by returning compact raw envelopes for `searchTrackersRaw`, `getSeriesByIdRaw`, and `getUserProgressRaw`.
+6. Runtime seams are adapter-driven (`httpClient`, `cacheAdapter`, `onCredentialsRequired`) with in-memory fallbacks for package-level testing.
+
 ## Build
 
 ```bash
@@ -56,3 +65,11 @@ Type definitions governance:
 ```bash
 npm test
 ```
+
+This runs all tests in `tests/*.test.cjs`, including Wave 1, Wave 2, and Wave 3 baseline coverage in `tests/wave1-runtime-baseline.test.cjs`.
+Wave 0 mapper contract coverage is in `tests/wave0-mapper-contract.test.cjs`.
+
+## Migration Docs
+
+1. Port plan and wave status: `docs/mangadex-wrapper-port-plan.md`
+2. Runtime consistency + host loader verification report: `docs/runtime-structure-consistency-report.md`

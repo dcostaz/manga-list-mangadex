@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/build-runtime-tracker-package.cjs",
     "build:runtime": "node scripts/build-runtime-tracker-package.cjs",
-    "test": "node --test tests/tracker.test.cjs tests/build-runtime-tracker-package.test.cjs"
+    "test": "node --test tests/*.test.cjs"
   },
   "keywords": [
     "manga",
