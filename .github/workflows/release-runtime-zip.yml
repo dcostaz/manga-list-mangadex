@@ -43,4 +43,4 @@ jobs:
           name: Latest Runtime Package
           body: Latest automated runtime package build from main.
           files: dist/manga-list-mangadex-runtime.zip
-          overwrite_files: true
+          fail_on_unmatched_files: true
