@@ -6,11 +6,14 @@ const SettingsClass = require(path.join(__dirname, 'api-settings-mangadex.cjs'))
 const MapperClass = require(path.join(__dirname, 'mapper-mangadex.cjs'));
 const { TRACKER_DTO_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'trackerdtocontract.cjs'));
 
+/** @typedef {import('../../../../types/trackertypedefs').MangaDexTrackerModuleDescriptor} MangaDexTrackerModuleDescriptor */
+
 const serviceName = typeof WrapperClass.serviceName === 'string'
   ? WrapperClass.serviceName
   : 'mangadex';
 
-module.exports = {
+/** @type {MangaDexTrackerModuleDescriptor} */
+const trackerModule = {
   serviceName,
   wrapperId: 'mangadex',
   dtoContractVersion: TRACKER_DTO_CONTRACT_VERSION,
@@ -24,3 +27,5 @@ module.exports = {
   MapperClass,
   SettingsClass,
 };
+
+module.exports = trackerModule;

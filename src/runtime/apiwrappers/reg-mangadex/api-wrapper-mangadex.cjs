@@ -3,11 +3,17 @@
 const path = require('path');
 const MangaDexAPISettings = require(path.join(__dirname, 'api-settings-mangadex.cjs'));
 
+/** @typedef {import('../../../../types/trackertypedefs').TrackerServiceSettings} TrackerServiceSettings */
+/** @typedef {import('../../../../types/trackertypedefs').MangaDexAPIWrapperCtorParams} MangaDexAPIWrapperCtorParams */
+/** @typedef {import('../../../../types/trackertypedefs').MangaDexAPIWrapperInitOptions} MangaDexAPIWrapperInitOptions */
+/** @typedef {import('../../../../types/trackertypedefs').MangaDexRawSearchResponse} MangaDexRawSearchResponse */
+/** @typedef {import('../../../../types/trackertypedefs').MangaDexRawEntityResponse} MangaDexRawEntityResponse */
+
 class MangaDexAPIWrapper {
   /**
-   * @param {object} [params]
+  * @param {MangaDexAPIWrapperCtorParams} [params]
    * @param {MangaDexAPISettings | null} [params.apiSettings]
-   * @param {Record<string, unknown>} [params.serviceSettings]
+  * @param {TrackerServiceSettings} [params.serviceSettings]
    */
   constructor(params = {}) {
     const apiSettings = params && typeof params === 'object' ? params.apiSettings : null;
@@ -18,9 +24,9 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {object} [options]
+    * @param {MangaDexAPIWrapperInitOptions} [options]
    * @param {MangaDexAPISettings | null} [options.apiSettings]
-   * @param {Record<string, unknown>} [options.serviceSettings]
+    * @param {TrackerServiceSettings} [options.serviceSettings]
    * @returns {Promise<MangaDexAPIWrapper>}
    */
   static async init(options = {}) {
@@ -36,7 +42,7 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} query
-   * @returns {Promise<{ trackerId: string, operation: string, payload: { data: Array<Record<string, unknown>> } }>}
+  * @returns {Promise<MangaDexRawSearchResponse>}
    */
   async searchTrackersRaw(query) {
     const normalizedQuery = typeof query === 'string' ? query.trim() : '';
@@ -53,7 +59,7 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} trackerId
-   * @returns {Promise<{ trackerId: string, operation: string, payload: Record<string, unknown> }>}
+  * @returns {Promise<MangaDexRawEntityResponse>}
    */
   async getSeriesByIdRaw(trackerId) {
     const normalizedTrackerId = typeof trackerId === 'string' ? trackerId.trim() : '';
@@ -69,7 +75,7 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} trackerId
-   * @returns {Promise<{ trackerId: string, operation: string, payload: Record<string, unknown> }>}
+  * @returns {Promise<MangaDexRawEntityResponse>}
    */
   async getUserProgressRaw(trackerId) {
     const normalizedTrackerId = typeof trackerId === 'string' ? trackerId.trim() : '';
