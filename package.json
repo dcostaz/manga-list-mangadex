@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node scripts/build-runtime-tracker-package.cjs",
     "build:runtime": "node scripts/build-runtime-tracker-package.cjs",
-    "test": "node --test tests/unit/*.test.cjs"
+    "test": "node --test tests/unit/*.test.cjs",
+    "test:auth:interactive": "node scripts/run-auth-integration-test.cjs"
   },
   "keywords": [
     "manga",

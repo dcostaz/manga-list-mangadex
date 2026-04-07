@@ -67,6 +67,18 @@ npm test
 
 `npm test` runs the unit suites under `tests/unit/`.
 
+Manual local auth integration test (interactive credentials prompt):
+
+```bash
+npm run test:auth:interactive
+```
+
+This test is local-only and intentionally excluded from default `npm test` and CI runs.
+The runner prompts for temporary real MangaDex credentials (`username`, `password`, `clientId`, `clientSecret`) and validates live token acquisition.
+For non-interactive shells, set `MDX_TEST_USERNAME`, `MDX_TEST_PASSWORD`, `MDX_TEST_CLIENT_ID`, and `MDX_TEST_CLIENT_SECRET` before running the command.
+By default it prints verbose auth progress and a masked token preview.
+Set `MDX_TEST_SHOW_FULL_TOKEN=1` if you explicitly want the full token printed.
+
 GitHub Actions runs the same test command on every push and pull request via:
 `.github/workflows/tests.yml`.
 
@@ -87,7 +99,7 @@ Final test suites:
 
 Integration folder:
 
-1. `tests/integration/` (reserved for manual or live integration suites)
+1. `tests/integration/runtime-wrapper-auth-integration.manual.cjs`
 
 These suites cover build/manifest compatibility, mapper normalization,
 settings contracts and baseline matrix checks, wrapper lifecycle,
