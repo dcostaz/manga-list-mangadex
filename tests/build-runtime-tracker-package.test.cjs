@@ -70,9 +70,7 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     assert.deepEqual(entries, [
       'apiwrappers/reg-mangadex/api-settings-mangadex.cjs',
       'apiwrappers/reg-mangadex/api-wrapper-mangadex.cjs',
-      'apiwrappers/reg-mangadex/mangadex-api-settings.definition.json',
       'apiwrappers/reg-mangadex/mangadex-api-settings.json',
-      'apiwrappers/reg-mangadex/mangadex-api-settings.values.json',
       'apiwrappers/reg-mangadex/mapper-mangadex.cjs',
       'apiwrappers/reg-mangadex/tracker-module.cjs',
       'apiwrappers/trackerdtocontract.cjs',
@@ -93,6 +91,8 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     const settingsFile = zip.file('apiwrappers/reg-mangadex/mangadex-api-settings.json');
     // This file is generated at package build time from definition + values sources.
     assert.ok(settingsFile);
+  assert.equal(zip.file('apiwrappers/reg-mangadex/mangadex-api-settings.definition.json'), null);
+  assert.equal(zip.file('apiwrappers/reg-mangadex/mangadex-api-settings.values.json'), null);
     const settingsRaw = await settingsFile.async('string');
     const effectiveSettings = JSON.parse(settingsRaw);
     assert.equal(effectiveSettings.metadata.componentName, 'MangaDexAPI');

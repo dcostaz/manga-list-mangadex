@@ -33,14 +33,6 @@ const FILE_MAPPINGS = [
     dest: path.join('apiwrappers', 'reg-mangadex', 'api-settings-mangadex.cjs').replace(/\\/g, '/'),
   },
   {
-    src: SETTINGS_DEFINITION_SOURCE,
-    dest: path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.definition.json').replace(/\\/g, '/'),
-  },
-  {
-    src: SETTINGS_VALUES_SOURCE,
-    dest: path.join('apiwrappers', 'reg-mangadex', 'mangadex-api-settings.values.json').replace(/\\/g, '/'),
-  },
-  {
     src: path.join('src', 'runtime', 'apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs'),
     dest: path.join('apiwrappers', 'reg-mangadex', 'mapper-mangadex.cjs').replace(/\\/g, '/'),
   },
@@ -299,7 +291,7 @@ function buildRuntimeTrackerPackage(options = {}) {
     archive.pipe(output);
 
     archive.append(JSON.stringify(manifest, null, 2), { name: 'tracker-package.json' });
-  archive.append(JSON.stringify(effectiveSettings, null, 2), { name: SETTINGS_EFFECTIVE_DEST });
+    archive.append(JSON.stringify(effectiveSettings, null, 2), { name: SETTINGS_EFFECTIVE_DEST });
 
     for (const file of FILE_MAPPINGS) {
       const fullSource = path.join(ROOT_DIR, file.src);
