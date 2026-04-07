@@ -2,7 +2,7 @@
   "name": "manga-list-mangadex",
   "version": "1.0.0",
   "description": "Runtime tracker package source and builder for MangaDex",
-  "main": "src/index.cjs",
+  "main": "src/runtime/apiwrappers/reg-mangadex/tracker-module.cjs",
   "scripts": {
     "build": "node scripts/build-runtime-tracker-package.cjs",
     "build:runtime": "node scripts/build-runtime-tracker-package.cjs",
