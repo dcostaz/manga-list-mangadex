@@ -1,17 +1,157 @@
 {
   "metadata": {
     "componentName": "MangaDexAPI",
-    "description": "MangaDex runtime tracker package settings values",
+    "description": "MangaDex runtime tracker package settings values (tracker-specific extension)",
     "version": "1.0.0",
+    "lastModified": "2025-11-15T20:14:45.804Z",
+    "lifecycle": {
+      "bootstrapPhase": "early",
+      "dependencies": [],
+      "requiredBy": []
+    },
+    "categories": [
+      {
+        "id": "display",
+        "label": "Display & UI",
+        "description": "User interface and display options",
+        "order": 50,
+        "icon": "visibility"
+      },
+      {
+        "id": "general",
+        "label": "General",
+        "description": "Basic configuration options",
+        "order": 10,
+        "icon": "settings"
+      },
+      {
+        "id": "network",
+        "label": "Network & API",
+        "description": "Network connections and external API configuration",
+        "order": 40,
+        "icon": "cloud"
+      },
+      {
+        "id": "paths",
+        "label": "Paths & Directories",
+        "description": "File system paths and directory configuration",
+        "order": 20,
+        "icon": "folder"
+      },
+      {
+        "id": "performance",
+        "label": "Performance & Caching",
+        "description": "Performance tuning and caching configuration",
+        "order": 30,
+        "icon": "speed"
+      }
+    ],
     "settingsContractVersion": "1.0.0"
   },
   "settings": {
-    "serviceName": "mangadex",
-    "api.baseUrl": "https://api.mangadex.org",
     "api.authUrl": "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect",
-    "api.endPoints.manga.template": "${baseUrl}/manga",
-    "api.endPoints.mangaById.template": "${baseUrl}/manga/${id}",
-    "network.timeoutMs": 15000,
-    "search.limit": 10
+    "api.baseUrl": "https://api.mangadex.org",
+    "api.endpoints.token.template": "${authUrl}/token",
+    "api.endpoints.token.throttle": 0,
+    "api.endpoints.refreshToken.template": "${authUrl}/token",
+    "api.endpoints.refreshToken.throttle": 0,
+    "api.endpoints.manga.template": "${baseUrl}/manga",
+    "api.endpoints.manga.throttle": 1000,
+    "api.endpoints.cover.template": "${baseUrl}/cover",
+    "api.endpoints.cover.throttle": 1000,
+    "api.endpoints.follow.template": "${baseUrl}/manga/${id}/follow",
+    "api.endpoints.follow.throttle": 1000,
+    "api.endpoints.status.template": "${baseUrl}/manga/${id}/status",
+    "api.endpoints.status.throttle": 1000,
+    "statusMapping.READING": "reading",
+    "statusMapping.COMPLETED": "completed",
+    "statusMapping.PLAN_TO_READ": "plan_to_read",
+    "statusMapping.ON_HOLD": "on_hold",
+    "statusMapping.DROPPED": "dropped",
+    "statusMapping.RE_READING": "re_reading",
+    "ui.label": "MangaDex",
+    "ui.icon": "images/manga-dex.svg",
+    "ui.credentialsTemplate": [
+      {
+        "key": "username",
+        "label": "Username",
+        "type": "text",
+        "autocomplete": "username",
+        "required": true,
+        "description": "MangaDex account username."
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "type": "password",
+        "autocomplete": "current-password",
+        "required": true,
+        "description": "Account password used to request tokens."
+      },
+      {
+        "key": "clientId",
+        "label": "Client ID",
+        "type": "text",
+        "required": true,
+        "placeholder": "xxxxxxxx-xxxx",
+        "description": "OAuth client ID from MangaDex developer settings."
+      },
+      {
+        "key": "clientSecret",
+        "label": "Client Secret",
+        "type": "password",
+        "required": true,
+        "description": "OAuth client secret for the MangaDex app."
+      }
+    ],
+    "connection.timeout.connect": 5000,
+    "connection.timeout.request": 30000,
+    "connection.timeout.search": 60000,
+    "connection.pool.maxSockets": 10,
+    "connection.pool.maxFreeSockets": 5,
+    "connection.pool.keepAlive": true,
+    "retry.enabled": true,
+    "retry.maxAttempts": 3,
+    "retry.backoff.type": "exponential",
+    "retry.backoff.initialDelay": 1000,
+    "retry.backoff.maxDelay": 10000,
+    "retry.backoff.multiplier": 2,
+    "retry.retryableErrors": [
+      "ETIMEDOUT",
+      "ECONNRESET",
+      "ECONNREFUSED",
+      502,
+      503,
+      504,
+      429
+    ],
+    "cache.enabled": true,
+    "cache.provider": "redis",
+    "cache.ttl.seriesMetadata": 86400,
+    "cache.ttl.searchResults": 3600,
+    "cache.ttl.coverUrls": 604800,
+    "cache.ttl.accessToken": 900,
+    "cache.ttl.refreshToken": 2592000,
+    "cache.ttl.default": 3600,
+    "rateLimit.global.enabled": true,
+    "rateLimit.global.maxConcurrent": 5,
+    "rateLimit.global.maxPerSecond": 5,
+    "rateLimit.global.maxPerMinute": 60,
+    "rateLimit.global.queueSize": 50,
+    "rateLimit.perEndpoint.enabled": true,
+    "rateLimit.perEndpoint.defaultDelay": 1000,
+    "rateLimit.perEndpoint.token": 0,
+    "rateLimit.perEndpoint.refreshToken": 0,
+    "rateLimit.perEndpoint.manga": 1000,
+    "rateLimit.perEndpoint.cover": 1000,
+    "rateLimit.perEndpoint.follow": 1000,
+    "rateLimit.perEndpoint.status": 1000,
+    "resilience.circuitBreaker.enabled": false,
+    "resilience.circuitBreaker.failureThreshold": 5,
+    "resilience.circuitBreaker.failureWindow": 10000,
+    "resilience.circuitBreaker.openDuration": 30000,
+    "resilience.healthCheck.enabled": false,
+    "resilience.healthCheck.endpoint": "/manga",
+    "resilience.healthCheck.interval": 60000
   }
 }

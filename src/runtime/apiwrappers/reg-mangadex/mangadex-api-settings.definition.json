@@ -1,52 +1,853 @@
 {
   "metadata": {
     "componentName": "MangaDexAPI",
-    "description": "MangaDex runtime tracker package settings definition",
+    "description": "MangaDex runtime tracker package settings definition (tracker-specific extension)",
     "version": "1.0.0",
+    "lastModified": "2025-11-15T20:14:45.804Z",
+    "lifecycle": {
+      "bootstrapPhase": "early",
+      "dependencies": [],
+      "requiredBy": []
+    },
+    "categories": [
+      {
+        "id": "display",
+        "label": "Display & UI",
+        "description": "User interface and display options",
+        "order": 50,
+        "icon": "visibility"
+      },
+      {
+        "id": "general",
+        "label": "General",
+        "description": "Basic configuration options",
+        "order": 10,
+        "icon": "settings"
+      },
+      {
+        "id": "network",
+        "label": "Network & API",
+        "description": "Network connections and external API configuration",
+        "order": 40,
+        "icon": "cloud"
+      },
+      {
+        "id": "paths",
+        "label": "Paths & Directories",
+        "description": "File system paths and directory configuration",
+        "order": 20,
+        "icon": "folder"
+      },
+      {
+        "id": "performance",
+        "label": "Performance & Caching",
+        "description": "Performance tuning and caching configuration",
+        "order": 30,
+        "icon": "speed"
+      }
+    ],
     "settingsContractVersion": "1.0.0"
   },
   "schema": {
-    "serviceName": {
+    "api.authUrl": {
       "type": "string",
       "required": true,
-      "default": "mangadex",
-      "description": "Tracker service name"
+      "default": "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect",
+      "description": "MangaDex OpenID Connect authentication base URL",
+      "validation": {
+        "pattern": "^https://"
+      },
+      "readOnly": false,
+      "isBasic": true,
+      "category": "network",
+      "order": 200
     },
     "api.baseUrl": {
       "type": "string",
       "required": true,
       "default": "https://api.mangadex.org",
-      "description": "Base URL for MangaDex API"
+      "description": "Base URL for MangaDex API",
+      "validation": {
+        "pattern": "^https://"
+      },
+      "readOnly": false,
+      "isBasic": true,
+      "category": "network",
+      "order": 210
     },
-    "api.authUrl": {
+    "api.endpoints.token.template": {
       "type": "string",
       "required": true,
-      "default": "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect",
-      "description": "OpenID Connect auth URL"
+      "default": "${authUrl}/token",
+      "description": "OAuth token endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 220
     },
-    "api.endPoints.manga.template": {
+    "api.endpoints.token.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 0,
+      "description": "Minimum delay between token requests (milliseconds)",
+      "validation": {
+        "min": 0,
+        "max": 60000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 300
+    },
+    "api.endpoints.refreshToken.template": {
+      "type": "string",
+      "required": true,
+      "default": "${authUrl}/token",
+      "description": "OAuth refresh token endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 230
+    },
+    "api.endpoints.refreshToken.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 0,
+      "description": "Minimum delay between refresh token requests (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 310
+    },
+    "api.endpoints.manga.template": {
       "type": "string",
       "required": true,
       "default": "${baseUrl}/manga",
-      "description": "Search/list manga endpoint template"
+      "description": "Manga data endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 240
     },
-    "api.endPoints.mangaById.template": {
+    "api.endpoints.manga.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Minimum delay between manga requests (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 320
+    },
+    "api.endpoints.cover.template": {
       "type": "string",
       "required": true,
-      "default": "${baseUrl}/manga/${id}",
-      "description": "Fetch manga by id endpoint template"
+      "default": "${baseUrl}/cover",
+      "description": "Cover image endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 250
     },
-    "network.timeoutMs": {
+    "api.endpoints.cover.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Minimum delay between cover requests (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 330
+    },
+    "api.endpoints.follow.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/manga/${id}/follow",
+      "description": "Follow manga endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 260
+    },
+    "api.endpoints.follow.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Minimum delay between follow requests (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 340
+    },
+    "api.endpoints.status.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/manga/${id}/status",
+      "description": "Reading status endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 270
+    },
+    "api.endpoints.status.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Minimum delay between status requests (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 350
+    },
+    "statusMapping.READING": {
+      "type": "string",
+      "required": true,
+      "default": "reading",
+      "description": "MangaDex reading status value",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 70
+    },
+    "statusMapping.COMPLETED": {
+      "type": "string",
+      "required": true,
+      "default": "completed",
+      "description": "MangaDex completed status value",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 80
+    },
+    "statusMapping.PLAN_TO_READ": {
+      "type": "string",
+      "required": true,
+      "default": "plan_to_read",
+      "description": "MangaDex plan to read status value",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 90
+    },
+    "statusMapping.ON_HOLD": {
+      "type": "string",
+      "required": true,
+      "default": "on_hold",
+      "description": "MangaDex on hold status value",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 100
+    },
+    "statusMapping.DROPPED": {
+      "type": "string",
+      "required": true,
+      "default": "dropped",
+      "description": "MangaDex dropped status value",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 110
+    },
+    "statusMapping.RE_READING": {
+      "type": "string",
+      "required": true,
+      "default": "re_reading",
+      "description": "MangaDex re-reading status value",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 120
+    },
+    "ui.label": {
+      "type": "string",
+      "required": true,
+      "default": "MangaDex",
+      "description": "Display name for UI",
+      "readOnly": false,
+      "isBasic": true,
+      "category": "display",
+      "order": 10
+    },
+    "ui.icon": {
+      "type": "string",
+      "required": true,
+      "default": "images/manga-dex.svg",
+      "description": "Path to icon image",
+      "readOnly": false,
+      "isBasic": true,
+      "category": "paths",
+      "order": 290
+    },
+    "ui.credentialsTemplate": {
+      "type": "array",
+      "required": true,
+      "default": [
+        {
+          "key": "username",
+          "label": "Username",
+          "type": "text",
+          "autocomplete": "username",
+          "required": true,
+          "description": "MangaDex account username."
+        },
+        {
+          "key": "password",
+          "label": "Password",
+          "type": "password",
+          "autocomplete": "current-password",
+          "required": true,
+          "description": "Account password used to request tokens."
+        },
+        {
+          "key": "clientId",
+          "label": "Client ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "xxxxxxxx-xxxx",
+          "description": "OAuth client ID from MangaDex developer settings."
+        },
+        {
+          "key": "clientSecret",
+          "label": "Client Secret",
+          "type": "password",
+          "required": true,
+          "description": "OAuth client secret for the MangaDex app."
+        }
+      ],
+      "description": "Credential template for tracker auth prompts",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "display",
+      "order": 20
+    },
+    "credentials.primary": {
+      "type": "credential",
+      "required": false,
+      "default": null,
+      "label": "MangaDex Credentials",
+      "description": "Securely store the MangaDex username/password/client keys required by the API wrapper.",
+      "helpText": "Opens the encrypted credential modal so operators can enter MangaDex username, password, client ID, and client secret without digging through non-tracker categories.",
+      "isBasic": true,
+      "readOnly": false,
+      "implementationStatus": "implemented",
+      "category": "general",
+      "order": 40,
+      "tags": [
+        "credentials",
+        "tracker",
+        "security"
+      ],
+      "uiHints": {
+        "widget": "credential",
+        "serviceName": "mangadex",
+        "credentialType": "tracker",
+        "credentialKeys": [
+          "username",
+          "password",
+          "clientId",
+          "clientSecret"
+        ]
+      }
+    },
+    "connection.timeout.connect": {
       "type": "number",
       "required": true,
-      "default": 15000,
-      "description": "Request timeout in milliseconds"
+      "default": 5000,
+      "description": "Connection timeout in milliseconds",
+      "validation": {
+        "min": 1000,
+        "max": 30000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 360
     },
-    "search.limit": {
+    "connection.timeout.request": {
+      "type": "number",
+      "required": true,
+      "default": 30000,
+      "description": "Request timeout in milliseconds",
+      "validation": {
+        "min": 5000,
+        "max": 120000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 370
+    },
+    "connection.timeout.search": {
+      "type": "number",
+      "required": true,
+      "default": 60000,
+      "description": "Search timeout in milliseconds",
+      "validation": {
+        "min": 10000,
+        "max": 300000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 380
+    },
+    "connection.pool.maxSockets": {
       "type": "number",
       "required": true,
       "default": 10,
-      "description": "Default number of search results"
+      "description": "Maximum concurrent connections",
+      "validation": {
+        "min": 1,
+        "max": 50
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 390
+    },
+    "connection.pool.maxFreeSockets": {
+      "type": "number",
+      "required": true,
+      "default": 5,
+      "description": "Maximum idle connections to keep alive",
+      "validation": {
+        "min": 0,
+        "max": 25
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 400
+    },
+    "connection.pool.keepAlive": {
+      "type": "boolean",
+      "required": true,
+      "default": true,
+      "description": "Enable HTTP keep-alive",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "general",
+      "order": 130
+    },
+    "retry.enabled": {
+      "type": "boolean",
+      "required": true,
+      "default": true,
+      "description": "Enable automatic retry on transient failures",
+      "readOnly": false,
+      "isBasic": true,
+      "category": "general",
+      "order": 140
+    },
+    "retry.maxAttempts": {
+      "type": "number",
+      "required": true,
+      "default": 3,
+      "description": "Maximum retry attempts",
+      "validation": {
+        "min": 0,
+        "max": 10
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 410
+    },
+    "retry.backoff.type": {
+      "type": "string",
+      "required": true,
+      "default": "exponential",
+      "description": "Backoff strategy (exponential, linear, fixed)",
+      "validation": {
+        "enum": [
+          "exponential",
+          "linear",
+          "fixed"
+        ]
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "general",
+      "order": 150
+    },
+    "retry.backoff.initialDelay": {
+      "type": "number",
+      "required": true,
+      "default": 1000,
+      "description": "Initial retry delay in milliseconds",
+      "validation": {
+        "min": 100,
+        "max": 10000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "general",
+      "order": 160
+    },
+    "retry.backoff.maxDelay": {
+      "type": "number",
+      "required": true,
+      "default": 10000,
+      "description": "Maximum retry delay in milliseconds",
+      "validation": {
+        "min": 1000,
+        "max": 60000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 420
+    },
+    "retry.backoff.multiplier": {
+      "type": "number",
+      "required": true,
+      "default": 2,
+      "description": "Exponential backoff multiplier",
+      "validation": {
+        "min": 1,
+        "max": 5
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "general",
+      "order": 170
+    },
+    "retry.retryableErrors": {
+      "type": "array",
+      "required": true,
+      "default": [
+        "ETIMEDOUT",
+        "ECONNRESET",
+        "ECONNREFUSED",
+        502,
+        503,
+        504,
+        429
+      ],
+      "description": "Retryable HTTP status codes and network errors",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "general",
+      "order": 180
+    },
+    "cache.enabled": {
+      "type": "boolean",
+      "required": true,
+      "default": true,
+      "description": "Enable response caching",
+      "readOnly": false,
+      "isBasic": true,
+      "category": "performance",
+      "order": 430
+    },
+    "cache.provider": {
+      "type": "string",
+      "required": true,
+      "default": "redis",
+      "description": "Cache provider (redis, memory)",
+      "validation": {
+        "enum": [
+          "redis",
+          "memory"
+        ]
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 440
+    },
+    "cache.ttl.seriesMetadata": {
+      "type": "number",
+      "required": true,
+      "default": 86400,
+      "description": "Series metadata cache TTL (seconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 450
+    },
+    "cache.ttl.searchResults": {
+      "type": "number",
+      "required": true,
+      "default": 3600,
+      "description": "Search results cache TTL (seconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 460
+    },
+    "cache.ttl.coverUrls": {
+      "type": "number",
+      "required": true,
+      "default": 604800,
+      "description": "Cover URLs cache TTL (seconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 470
+    },
+    "cache.ttl.accessToken": {
+      "type": "number",
+      "required": true,
+      "default": 900,
+      "description": "Access token cache TTL (seconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 480
+    },
+    "cache.ttl.refreshToken": {
+      "type": "number",
+      "required": true,
+      "default": 2592000,
+      "description": "Refresh token cache TTL (seconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 490
+    },
+    "cache.ttl.default": {
+      "type": "number",
+      "required": true,
+      "default": 3600,
+      "description": "Default cache TTL (seconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 500
+    },
+    "rateLimit.global.enabled": {
+      "type": "boolean",
+      "required": true,
+      "default": true,
+      "description": "Enable global rate limiting",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 510
+    },
+    "rateLimit.global.maxConcurrent": {
+      "type": "number",
+      "required": true,
+      "default": 5,
+      "description": "Maximum concurrent requests",
+      "validation": {
+        "min": 1,
+        "max": 20
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 520
+    },
+    "rateLimit.global.maxPerSecond": {
+      "type": "number",
+      "required": true,
+      "default": 5,
+      "description": "Maximum requests per second (MangaDex limit)",
+      "validation": {
+        "min": 1,
+        "max": 10
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 530
+    },
+    "rateLimit.global.maxPerMinute": {
+      "type": "number",
+      "required": true,
+      "default": 60,
+      "description": "Maximum requests per minute",
+      "validation": {
+        "min": 10,
+        "max": 200
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 540
+    },
+    "rateLimit.global.queueSize": {
+      "type": "number",
+      "required": true,
+      "default": 50,
+      "description": "Maximum queued requests",
+      "validation": {
+        "min": 10,
+        "max": 200
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 550
+    },
+    "rateLimit.perEndpoint.enabled": {
+      "type": "boolean",
+      "required": true,
+      "default": true,
+      "description": "Enable per-endpoint rate limiting",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 560
+    },
+    "rateLimit.perEndpoint.defaultDelay": {
+      "type": "number",
+      "required": true,
+      "default": 1000,
+      "description": "Default delay between endpoint calls (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 570
+    },
+    "rateLimit.perEndpoint.token": {
+      "type": "number",
+      "required": false,
+      "default": 0,
+      "description": "Token endpoint delay (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 580
+    },
+    "rateLimit.perEndpoint.refreshToken": {
+      "type": "number",
+      "required": false,
+      "default": 0,
+      "description": "Refresh token endpoint delay (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 590
+    },
+    "rateLimit.perEndpoint.manga": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Manga endpoint delay (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 600
+    },
+    "rateLimit.perEndpoint.cover": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Cover endpoint delay (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 610
+    },
+    "rateLimit.perEndpoint.follow": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Follow endpoint delay (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 620
+    },
+    "rateLimit.perEndpoint.status": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Status endpoint delay (milliseconds)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 630
+    },
+    "resilience.circuitBreaker.enabled": {
+      "type": "boolean",
+      "required": true,
+      "default": false,
+      "description": "Enable circuit breaker pattern (P2 - MEDIUM: disabled until Phase 10.8)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "display",
+      "order": 30
+    },
+    "resilience.circuitBreaker.failureThreshold": {
+      "type": "number",
+      "required": true,
+      "default": 5,
+      "description": "Consecutive failures before opening circuit (P2)",
+      "validation": {
+        "min": 1,
+        "max": 20
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "display",
+      "order": 40
+    },
+    "resilience.circuitBreaker.failureWindow": {
+      "type": "number",
+      "required": true,
+      "default": 10000,
+      "description": "Failure window in milliseconds (P2)",
+      "validation": {
+        "min": 1000,
+        "max": 60000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "display",
+      "order": 50
+    },
+    "resilience.circuitBreaker.openDuration": {
+      "type": "number",
+      "required": true,
+      "default": 30000,
+      "description": "Duration circuit stays open in milliseconds (P2)",
+      "validation": {
+        "min": 5000,
+        "max": 300000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "display",
+      "order": 60
+    },
+    "resilience.healthCheck.enabled": {
+      "type": "boolean",
+      "required": true,
+      "default": false,
+      "description": "Enable periodic health checks (P2 - MEDIUM: disabled until Phase 10.8)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "general",
+      "order": 190
+    },
+    "resilience.healthCheck.endpoint": {
+      "type": "string",
+      "required": false,
+      "default": "/manga",
+      "description": "Endpoint to use for health checks (P2)",
+      "readOnly": false,
+      "isBasic": false,
+      "category": "network",
+      "order": 280
+    },
+    "resilience.healthCheck.interval": {
+      "type": "number",
+      "required": true,
+      "default": 60000,
+      "description": "Health check interval in milliseconds (P2)",
+      "validation": {
+        "min": 10000,
+        "max": 600000
+      },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 640
     }
   }
 }

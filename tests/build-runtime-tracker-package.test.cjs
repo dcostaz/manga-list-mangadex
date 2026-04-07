@@ -38,9 +38,10 @@ test('buildEffectiveSettingsDocument merges definition and values into runtime p
   assert.equal(effective.metadata.componentName, 'MangaDexAPI');
   assert.equal(effective.metadata.settingsContractVersion, '1.0.0');
   assert.equal(typeof effective.schema['api.baseUrl'], 'object');
-  assert.equal(effective.settings.serviceName, 'mangadex');
+  assert.equal(typeof effective.schema['api.endpoints.manga.template'], 'object');
   assert.equal(effective.settings['api.baseUrl'], 'https://api.mangadex.org');
-  assert.equal(effective.settings['search.limit'], 10);
+  assert.equal(effective.settings['api.endpoints.manga.template'], '${baseUrl}/manga');
+  assert.equal(effective.settings['statusMapping.READING'], 'reading');
 });
 
 test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runtime files', async () => {
@@ -85,8 +86,9 @@ test('buildRuntimeTrackerPackage creates zip with tracker-package.json and runti
     const settingsRaw = await settingsFile.async('string');
     const effectiveSettings = JSON.parse(settingsRaw);
     assert.equal(effectiveSettings.metadata.componentName, 'MangaDexAPI');
-    assert.equal(effectiveSettings.settings.serviceName, 'mangadex');
-    assert.equal(effectiveSettings.settings['network.timeoutMs'], 15000);
+    assert.equal(effectiveSettings.settings['api.authUrl'], 'https://auth.mangadex.org/realms/mangadex/protocol/openid-connect');
+    assert.equal(effectiveSettings.settings['api.endpoints.status.template'], '${baseUrl}/manga/${id}/status');
+    assert.equal(effectiveSettings.settings['rateLimit.perEndpoint.manga'], 1000);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
