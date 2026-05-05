@@ -659,30 +659,53 @@ class MangaDexAPIWrapper {
       }
 
       const ranked = this._rankSearchRows(rows, targetTitles);
-      const mapped = ranked
-        .map((row) => {
+      const mapped = (await Promise.all(
+        ranked.map(async (row) => {
           const rowData = row && typeof row === 'object' && row.row && typeof row.row === 'object'
             ? row.row
             : null;
           const rowId = rowData && typeof rowData.id === 'string' ? rowData.id : null;
-          const attributes = rowData && rowData.attributes && typeof rowData.attributes === 'object'
-            ? rowData.attributes
+
+          if (!rowId) {
+            return null;
+          }
+
+          let normalizedRow = rowData;
+          try {
+            const detail = await this.getMangaById(rowId, useCache);
+            const detailData = detail && typeof detail === 'object' && detail.data && typeof detail.data === 'object'
+              ? detail.data
+              : null;
+            const detailAttributes = detailData && detailData.attributes && typeof detailData.attributes === 'object'
+              ? detailData.attributes
+              : null;
+            const hasDetailTitle = detailAttributes && detailAttributes.title && typeof detailAttributes.title === 'object'
+              && Object.values(detailAttributes.title).some((entry) => typeof entry === 'string' && entry.trim());
+            if (detailData && hasDetailTitle) {
+              normalizedRow = detailData;
+            }
+          } catch {
+            // Keep ranked search row when detail hydration fails.
+          }
+
+          const attributes = normalizedRow && normalizedRow.attributes && typeof normalizedRow.attributes === 'object'
+            ? normalizedRow.attributes
             : null;
           const titleValues = attributes && attributes.title && typeof attributes.title === 'object'
             ? Object.values(attributes.title).filter((entry) => typeof entry === 'string' && entry.trim())
             : [];
 
-          if (!rowId || titleValues.length === 0) {
+          if (titleValues.length === 0) {
             return null;
           }
 
           return {
-            ...rowData,
+            ...normalizedRow,
             id: rowId,
             title: String(titleValues[0]),
           };
-        })
-        .filter((row) => row !== null);
+        }),
+      )).filter((row) => row !== null);
 
       if (mapped.length > 0) {
         return {
