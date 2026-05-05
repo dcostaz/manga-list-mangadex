@@ -677,6 +677,7 @@ class MangaDexAPIWrapper {
           }
 
           return {
+            ...rowData,
             id: rowId,
             title: String(titleValues[0]),
           };

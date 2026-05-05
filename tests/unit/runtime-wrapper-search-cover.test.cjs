@@ -225,10 +225,9 @@ test('search flow - searchTrackersRaw prioritizes exact matches over fuzzy match
   const raw = await wrapper.searchTrackersRaw({ title: 'Solo Leveling' }, { useCache: false });
 
   assert.equal(raw.payload.data.length, 1);
-  assert.deepEqual(raw.payload.data[0], {
-    id: 'exact-second',
-    title: 'Solo Leveling',
-  });
+  assert.equal(raw.payload.data[0]?.id, 'exact-second');
+  assert.equal(raw.payload.data[0]?.title, 'Solo Leveling');
+  assert.equal(typeof raw.payload.data[0]?.attributes, 'object');
 });
 
 test('cover flow - searchCovers falls back to fuzzy match and normalizes dimensions', async () => {

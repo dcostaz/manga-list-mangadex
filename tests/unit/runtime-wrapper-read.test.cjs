@@ -129,9 +129,10 @@ test('read flow - searchTrackersRaw maps MangaDex rows to mapper payload shape',
 
   assert.equal(raw.trackerId, 'mangadex');
   assert.equal(raw.operation, 'searchTrackersRaw');
-  assert.deepEqual(raw.payload.data, [
-    { id: 'mdx-1', title: 'Solo Leveling' },
-  ]);
+  assert.equal(raw.payload.data.length, 1);
+  assert.equal(raw.payload.data[0]?.id, 'mdx-1');
+  assert.equal(raw.payload.data[0]?.title, 'Solo Leveling');
+  assert.equal(typeof raw.payload.data[0]?.attributes, 'object');
 });
 
 test('read flow - getSeriesByIdRaw returns compact id and title payload', async () => {
