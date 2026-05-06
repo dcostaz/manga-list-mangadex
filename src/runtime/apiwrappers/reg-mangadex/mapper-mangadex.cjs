@@ -56,12 +56,16 @@ class MangaDexTrackerMapper {
           : [];
         const attributeAlternativeTitles = attributes && Array.isArray(attributes.altTitles)
           ? attributes.altTitles
-            .flatMap((entry) => (entry && typeof entry === 'object' ? Object.values(entry) : []))
+          : [];
+        const attributeTitleVariants = attributes && attributes.title && typeof attributes.title === 'object'
+          ? Object.values(attributes.title)
           : [];
 
-        const alternativeTitles = [...rowAlternativeTitles, ...attributeAlternativeTitles]
-          .filter((entry) => typeof entry === 'string' && entry.trim())
-          .map((entry) => entry.trim());
+        const alternativeTitles = this._normalizeAlternativeTitles([
+          rowAlternativeTitles,
+          attributeAlternativeTitles,
+          attributeTitleVariants,
+        ], title);
 
         const matchType = row && typeof row.matchType === 'string' && ['exact', 'fuzzy', 'manual'].includes(row.matchType)
           ? row.matchType
@@ -135,12 +139,16 @@ class MangaDexTrackerMapper {
       : [];
     const attributeAlternativeTitles = payloadAttributes && Array.isArray(payloadAttributes.altTitles)
       ? payloadAttributes.altTitles
-        .flatMap((entry) => (entry && typeof entry === 'object' ? Object.values(entry) : []))
+      : [];
+    const payloadTitleVariants = payloadAttributes && payloadAttributes.title && typeof payloadAttributes.title === 'object'
+      ? Object.values(payloadAttributes.title)
       : [];
 
-    const alternativeTitles = [...payloadAlternativeTitles, ...attributeAlternativeTitles]
-      .filter((entry) => typeof entry === 'string' && entry.trim())
-      .map((entry) => entry.trim());
+    const alternativeTitles = this._normalizeAlternativeTitles([
+      payloadAlternativeTitles,
+      attributeAlternativeTitles,
+      payloadTitleVariants,
+    ], title);
 
     const descriptionFromAttributes = payloadAttributes && payloadAttributes.description && typeof payloadAttributes.description === 'object'
       ? Object.values(payloadAttributes.description).find((entry) => typeof entry === 'string' && entry.trim())
@@ -236,6 +244,63 @@ class MangaDexTrackerMapper {
    */
   toCoverMetadataDtos(_raw) {
     return [];
+  }
+
+  /**
+   * @param {unknown[]} candidates
+   * @returns {string[]}
+   */
+  _normalizeAlternativeTitles(candidates, primaryTitle = null) {
+    /** @type {string[]} */
+    const values = [];
+    const normalizedPrimary = typeof primaryTitle === 'string' && primaryTitle.trim()
+      ? primaryTitle.trim().toLocaleLowerCase()
+      : null;
+
+    for (const candidate of candidates) {
+      this._collectStringValues(candidate, values, new Set());
+    }
+
+    return Array.from(new Set(values))
+      .filter((entry) => {
+        if (!normalizedPrimary) {
+          return true;
+        }
+        return entry.toLocaleLowerCase() !== normalizedPrimary;
+      });
+  }
+
+  /**
+   * @param {unknown} value
+   * @param {string[]} bucket
+   * @param {Set<object>} visited
+   * @returns {void}
+   */
+  _collectStringValues(value, bucket, visited) {
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      if (normalized) {
+        bucket.push(normalized);
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((entry) => this._collectStringValues(entry, bucket, visited));
+      return;
+    }
+
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+
+    const record = /** @type {Record<string, unknown>} */ (value);
+    if (visited.has(record)) {
+      return;
+    }
+    visited.add(record);
+
+    Object.values(record).forEach((entry) => this._collectStringValues(entry, bucket, visited));
   }
 }
 
