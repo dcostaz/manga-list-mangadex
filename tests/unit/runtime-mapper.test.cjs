@@ -113,7 +113,11 @@ test('wave0 mapper contract - toSeriesDetailDto maps required compact fields', (
     description: null,
     status: null,
     year: null,
+    genres: [],
+    authors: [],
+    publishers: [],
     url: 'https://mangadex.org/title/mdx-1',
+    cover: null,
     metadata: null,
   });
 });
@@ -130,10 +134,24 @@ test('wave0 mapper contract - toSeriesDetailDto maps enriched nested manga paylo
           description: { en: 'A long-running webtoon.' },
           status: 'ongoing',
           year: 2010,
+          tags: [
+            { attributes: { name: { en: 'Action' } } },
+            { attributes: { name: { en: 'Fantasy' } } },
+          ],
         },
+        relationships: [
+          { type: 'author', attributes: { name: 'SIU' } },
+          { type: 'artist', attributes: { name: 'Dubu' } },
+        ],
       },
       metadata: {
         relationships: [{ type: 'author', id: 'author-1' }],
+        publishers: [{ publisher_name: 'Naver' }],
+      },
+      cover: {
+        coverUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg',
+        thumbnailUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg.256.jpg',
+        fileName: 'cover-file.jpg',
       },
     },
   });
@@ -146,9 +164,26 @@ test('wave0 mapper contract - toSeriesDetailDto maps enriched nested manga paylo
     description: 'A long-running webtoon.',
     status: 'ongoing',
     year: 2010,
+    genres: ['Action', 'Fantasy'],
+    authors: [
+      { name: 'SIU', type: 'Author' },
+      { name: 'Dubu', type: 'Artist' },
+    ],
+    publishers: [{ name: 'Naver', type: 'Unknown' }],
     url: 'https://mangadex.org/title/777',
+    cover: {
+      trackerId: '777',
+      source: 'mangadex',
+      coverUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg',
+      thumbnailUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg.256.jpg',
+      fileName: 'cover-file.jpg',
+      mimeType: null,
+      width: null,
+      height: null,
+    },
     metadata: {
       relationships: [{ type: 'author', id: 'author-1' }],
+      publishers: [{ publisher_name: 'Naver' }],
     },
   });
 });
@@ -193,7 +228,25 @@ test('wave0 mapper contract - toStatusDto normalizes flat and nested payload sta
   });
 });
 
-test('wave0 mapper contract - toCoverMetadataDtos returns empty collection for placeholder mapper', () => {
+test('wave0 mapper contract - toCoverMetadataDtos maps cover payload entries', () => {
   const mapper = new MangaDexTrackerMapper();
-  assert.deepEqual(mapper.toCoverMetadataDtos({ payload: [] }), []);
+  assert.deepEqual(mapper.toCoverMetadataDtos({
+    payload: {
+      id: 777,
+      cover: {
+        coverUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg',
+        thumbnailUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg.256.jpg',
+        fileName: 'cover-file.jpg',
+      },
+    },
+  }), [{
+    trackerId: '777',
+    source: 'mangadex',
+    coverUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg',
+    thumbnailUrl: 'https://uploads.mangadex.org/covers/777/cover-file.jpg.256.jpg',
+    fileName: 'cover-file.jpg',
+    mimeType: null,
+    width: null,
+    height: null,
+  }]);
 });

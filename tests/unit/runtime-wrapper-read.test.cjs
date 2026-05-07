@@ -83,6 +83,7 @@ async function createWrapper(httpClient, cacheAdapter) {
       'api.endpoints.token.template': '${authUrl}/token',
       'api.endpoints.refreshToken.template': '${authUrl}/token',
       'api.endpoints.manga.template': '${baseUrl}/manga',
+      'api.endpoints.cover.template': '${baseUrl}/cover',
       'api.endpoints.status.template': '${baseUrl}/manga/${id}/status',
     },
     httpClient,
@@ -133,6 +134,62 @@ test('read flow - searchTrackersRaw maps MangaDex rows to mapper payload shape',
   assert.equal(raw.payload.data[0]?.id, 'mdx-1');
   assert.equal(raw.payload.data[0]?.title, 'Solo Leveling');
   assert.equal(typeof raw.payload.data[0]?.attributes, 'object');
+});
+
+test('read flow - searchTrackersRaw resolves coverUrl from MangaDex covers endpoint', async () => {
+  const { cacheAdapter } = createMockCacheAdapter();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = () => ({
+    status: 200,
+    data: { access_token: 'read-access', refresh_token: 'read-refresh' },
+  });
+
+  httpHooks.getHandler = (url) => {
+    const normalizedUrl = String(url || '');
+
+    if (normalizedUrl.endsWith('/cover')) {
+      return {
+        status: 200,
+        data: {
+          data: [
+            {
+              id: 'cover-1',
+              attributes: {
+                fileName: 'ba80ff50-42aa-413f-884e-b1cb1ed31084.jpg',
+              },
+            },
+          ],
+        },
+      };
+    }
+
+    return {
+      status: 200,
+      data: {
+        data: [
+          {
+            id: '7c7e605b-3122-4be1-a14b-940729570d3e',
+            attributes: {
+              title: { en: 'Yangchigi Mabeopsa' },
+              altTitles: [{ en: 'The Shepherd Wizard' }],
+            },
+          },
+        ],
+        included: [],
+      },
+    };
+  };
+
+  const wrapper = await createWrapper(client, cacheAdapter);
+  const raw = await wrapper.searchTrackersRaw({ title: 'The Shepherd Wizard' }, { useCache: false });
+
+  assert.equal(raw.operation, 'searchTrackersRaw');
+  assert.equal(raw.payload.data.length, 1);
+  assert.equal(
+    raw.payload.data[0]?.coverUrl,
+    'https://uploads.mangadex.org/covers/7c7e605b-3122-4be1-a14b-940729570d3e/ba80ff50-42aa-413f-884e-b1cb1ed31084.jpg.256.jpg',
+  );
 });
 
 test('read flow - getSeriesByIdRaw returns compact id and title payload', async () => {

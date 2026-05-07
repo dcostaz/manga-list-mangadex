@@ -699,10 +699,32 @@ class MangaDexAPIWrapper {
             return null;
           }
 
+          let resolvedCoverUrl = normalizedRow && typeof normalizedRow.coverUrl === 'string'
+            ? normalizedRow.coverUrl.trim()
+            : '';
+
+          if (!resolvedCoverUrl) {
+            try {
+              const covers = await this.getCovers(rowId, useCache);
+              if (Array.isArray(covers) && covers.length > 0) {
+                const first = covers[0] && covers[0].attributes && typeof covers[0].attributes === 'object'
+                  ? covers[0].attributes
+                  : null;
+                const fileName = first && typeof first.fileName === 'string' ? first.fileName : '';
+                if (fileName) {
+                  resolvedCoverUrl = `https://uploads.mangadex.org/covers/${rowId}/${fileName}.256.jpg`;
+                }
+              }
+            } catch {
+              // Keep raw search rows usable even if cover lookup is unavailable.
+            }
+          }
+
           return {
             ...normalizedRow,
             id: rowId,
             title: String(titleValues[0]),
+            coverUrl: resolvedCoverUrl,
           };
         }),
       )).filter((row) => row !== null);
@@ -1087,12 +1109,45 @@ class MangaDexAPIWrapper {
       ? Object.values(manga.attributes.title).filter((entry) => typeof entry === 'string' && entry.trim())
       : [];
 
+    const resolvedTrackerId = typeof manga.id === 'string' ? manga.id : String(trackerId || '');
+    let covers = [];
+    if (typeof manga.id === 'string') {
+      try {
+        covers = await this.getCovers(manga.id, useCache);
+      } catch (error) {
+        covers = [];
+      }
+    }
+    const firstCover = Array.isArray(covers) && covers.length > 0 && covers[0] && typeof covers[0] === 'object'
+      ? covers[0]
+      : null;
+    const firstAttributes = firstCover && firstCover.attributes && typeof firstCover.attributes === 'object'
+      ? firstCover.attributes
+      : null;
+    const fileName = firstAttributes && typeof firstAttributes.fileName === 'string'
+      ? firstAttributes.fileName
+      : null;
+    const coverBaseUrl = resolvedTrackerId && fileName
+      ? `https://uploads.mangadex.org/covers/${resolvedTrackerId}/${fileName}`
+      : null;
+    const coverPayload = coverBaseUrl
+      ? {
+        trackerId: resolvedTrackerId,
+        coverUrl: coverBaseUrl,
+        thumbnailUrl: `${coverBaseUrl}.256.jpg`,
+        fileName,
+      }
+      : null;
+
     return {
       trackerId: SERVICE_NAME,
       operation: 'getSeriesByIdRaw',
       payload: {
-        id: typeof manga.id === 'string' ? manga.id : String(trackerId || ''),
+        id: resolvedTrackerId,
         title: titleValues.length > 0 ? String(titleValues[0]) : '',
+        data: manga,
+        cover: coverPayload,
+        covers: coverPayload ? [coverPayload] : [],
       },
     };
   }

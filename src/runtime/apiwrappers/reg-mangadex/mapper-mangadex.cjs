@@ -7,6 +7,7 @@ const { TRACKER_DTO_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'tra
 /** @typedef {import('../../../../types/trackertypedefs').MangaDexRawEntityResponse} MangaDexRawEntityResponse */
 /** @typedef {import('../../../../types/trackertypedefs').MangaDexSeriesDetailDto} MangaDexSeriesDetailDto */
 /** @typedef {import('../../../../types/trackertypedefs').MangaDexStatusDto} MangaDexStatusDto */
+/** @typedef {import('../../../../types/trackertypedefs').MangaDexCoverMetadataDto} MangaDexCoverMetadataDto */
 
 class MangaDexTrackerMapper {
   /**
@@ -169,9 +170,46 @@ class MangaDexTrackerMapper {
         ? yearFromAttributes
         : null;
 
+    const normalizedGenres = this._normalizeMetadataStringArray(
+      [
+        payload.genres,
+        payloadAttributes && payloadAttributes.tags,
+        payload.metadata && typeof payload.metadata === 'object' ? payload.metadata.genres : null,
+      ],
+      ['genre', 'name', 'label', 'title', 'value']
+    );
+    const payloadMetadata = payload.metadata && typeof payload.metadata === 'object'
+      ? payload.metadata
+      : null;
+
+    const relationshipContributors = this._extractMangaDexRelationshipContributors([
+      payloadData && payloadData.relationships,
+      payloadMetadata && payloadMetadata.relationships,
+    ]);
+
+    const normalizedAuthors = this._normalizeContributorEntries(
+      [
+        payload.authors,
+        payloadMetadata && payloadMetadata.authors,
+        relationshipContributors,
+      ],
+      ['name', 'author', 'fullName', 'label', 'title'],
+      'Unknown'
+    );
+    const normalizedPublishers = this._normalizeContributorEntries(
+      [
+        payload.publishers,
+        payloadMetadata && payloadMetadata.publishers,
+      ],
+      ['publisher_name', 'publisherName', 'name', 'publisher', 'label', 'title'],
+      'Unknown'
+    );
+
     const url = typeof payload.url === 'string'
       ? payload.url
       : `https://mangadex.org/title/${trackerId}`;
+
+    const cover = this._buildCoverMetadataDto(trackerId, payload && typeof payload.cover === 'object' ? payload.cover : null, payload);
 
     return {
       trackerId,
@@ -189,7 +227,11 @@ class MangaDexTrackerMapper {
           ? payloadAttributes.status
           : null,
       year: normalizedYear,
+      genres: normalizedGenres,
+      authors: normalizedAuthors,
+      publishers: normalizedPublishers,
       url,
+      cover,
       metadata: payload.metadata && typeof payload.metadata === 'object'
         ? payload.metadata
         : payloadData || null,
@@ -239,11 +281,135 @@ class MangaDexTrackerMapper {
   }
 
   /**
-   * @param {unknown} _raw
-   * @returns {Array<Record<string, unknown>>}
+   * @param {MangaDexRawEntityResponse | null} raw
+   * @returns {MangaDexCoverMetadataDto[]}
    */
-  toCoverMetadataDtos(_raw) {
-    return [];
+  toCoverMetadataDtos(raw) {
+    const payload = raw && typeof raw === 'object' ? raw.payload : null;
+    if (!payload || typeof payload !== 'object') {
+      return [];
+    }
+
+    const payloadData = payload.data && typeof payload.data === 'object'
+      ? payload.data
+      : null;
+    const trackerId = typeof payload.id === 'string' || typeof payload.id === 'number'
+      ? String(payload.id)
+      : typeof payload.trackerId === 'string' || typeof payload.trackerId === 'number'
+        ? String(payload.trackerId)
+        : payloadData && (typeof payloadData.id === 'string' || typeof payloadData.id === 'number')
+          ? String(payloadData.id)
+          : null;
+
+    if (!trackerId) {
+      return [];
+    }
+
+    /** @type {MangaDexCoverMetadataDto[]} */
+    const result = [];
+    const coverCandidates = Array.isArray(payload.covers)
+      ? payload.covers
+      : [];
+
+    const primary = this._buildCoverMetadataDto(trackerId, payload && typeof payload.cover === 'object' ? payload.cover : null, payload);
+    if (primary) {
+      result.push(primary);
+    }
+
+    for (const candidate of coverCandidates) {
+      const normalized = this._buildCoverMetadataDto(trackerId, candidate && typeof candidate === 'object' ? candidate : null, payload);
+      if (!normalized) {
+        continue;
+      }
+
+      if (result.some((entry) => entry.coverUrl === normalized.coverUrl && entry.thumbnailUrl === normalized.thumbnailUrl)) {
+        continue;
+      }
+
+      result.push(normalized);
+    }
+
+    return result;
+  }
+
+  /**
+   * @param {string} trackerId
+   * @param {Record<string, unknown> | null} coverCandidate
+   * @param {Record<string, unknown>} payload
+   * @returns {MangaDexCoverMetadataDto | null}
+   */
+  _buildCoverMetadataDto(trackerId, coverCandidate, payload) {
+    const coverRecord = coverCandidate && typeof coverCandidate === 'object'
+      ? coverCandidate
+      : null;
+
+    const coverUrl = this._normalizeString(
+      coverRecord && coverRecord.coverUrl,
+      coverRecord && coverRecord.url,
+      coverRecord && coverRecord.original,
+      payload.coverUrl,
+    );
+    const thumbnailUrl = this._normalizeString(
+      coverRecord && coverRecord.thumbnailUrl,
+      coverRecord && coverRecord.thumb,
+      payload.thumbnailUrl,
+      coverRecord && coverRecord.coverUrl,
+      coverRecord && coverRecord.url,
+    );
+
+    if (!coverUrl && !thumbnailUrl) {
+      return null;
+    }
+
+    return {
+      trackerId,
+      source: this.trackerId,
+      coverUrl: coverUrl || null,
+      thumbnailUrl: thumbnailUrl || null,
+      fileName: this._normalizeString(coverRecord && coverRecord.fileName) || null,
+      mimeType: this._normalizeString(coverRecord && coverRecord.mimeType) || null,
+      width: this._normalizeNumber(coverRecord && coverRecord.width),
+      height: this._normalizeNumber(coverRecord && coverRecord.height),
+    };
+  }
+
+  /**
+    * @param {...unknown} values
+   * @returns {string | null}
+   */
+  _normalizeString(...values) {
+    for (const value of values) {
+      if (typeof value !== 'string') {
+        continue;
+      }
+      const normalized = value.trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+    * @param {...unknown} values
+   * @returns {number | null}
+   */
+  _normalizeNumber(...values) {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === 'string' && value.trim()) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -268,6 +434,283 @@ class MangaDexTrackerMapper {
         }
         return entry.toLocaleLowerCase() !== normalizedPrimary;
       });
+  }
+
+  /**
+   * @param {unknown[]} candidates
+   * @param {string[]} preferredKeys
+   * @returns {string[]}
+   */
+  _normalizeMetadataStringArray(candidates, preferredKeys) {
+    /** @type {string[]} */
+    const values = [];
+    /** @type {Set<object>} */
+    const visited = new Set();
+
+    for (const candidate of candidates) {
+      this._collectMetadataStringValues(candidate, values, visited, preferredKeys, true);
+    }
+
+    return Array.from(new Set(values));
+  }
+
+  /**
+   * @param {unknown[]} values
+   * @returns {Array<{ name: string, type: string }>}
+   */
+  _extractMangaDexRelationshipContributors(values) {
+    /** @type {Array<{ name: string, type: string }>} */
+    const contributors = [];
+
+    /** @param {unknown} value */
+    const collect = (value) => {
+      if (Array.isArray(value)) {
+        value.forEach((entry) => collect(entry));
+        return;
+      }
+
+      if (!value || typeof value !== 'object') {
+        return;
+      }
+
+      const record = /** @type {Record<string, unknown>} */ (value);
+      const relationType = typeof record.type === 'string' ? record.type.trim().toLowerCase() : '';
+      if (relationType !== 'author' && relationType !== 'artist') {
+        return;
+      }
+
+      const attributes = record.attributes && typeof record.attributes === 'object' && !Array.isArray(record.attributes)
+        ? /** @type {Record<string, unknown>} */ (record.attributes)
+        : null;
+
+      const directName = this._normalizeString(
+        typeof record.name === 'string' ? record.name : null,
+        attributes && typeof attributes.name === 'string' ? attributes.name : null,
+        attributes && attributes.author,
+        attributes && attributes.fullName,
+        attributes && attributes.label,
+        attributes && attributes.title,
+      );
+      const localizedName = this._extractLocalizedName(attributes && attributes.name)
+        || this._extractLocalizedName(record.name);
+      const name = directName || localizedName;
+
+      if (!name) {
+        return;
+      }
+
+      contributors.push({
+        name,
+        type: relationType === 'artist' ? 'Artist' : 'Author',
+      });
+    };
+
+    values.forEach((entry) => collect(entry));
+    return contributors;
+  }
+
+  /**
+   * @param {unknown[]} candidates
+   * @param {string[]} preferredKeys
+   * @param {string} defaultType
+   * @returns {Array<{ name: string, type: string }>}
+   */
+  _normalizeContributorEntries(candidates, preferredKeys, defaultType) {
+    /** @type {Array<{ name: string, type: string }>} */
+    const normalized = [];
+
+    for (const candidate of candidates) {
+      this._collectContributorEntry(candidate, normalized, preferredKeys, defaultType);
+    }
+
+    return normalized;
+  }
+
+  /**
+   * @param {unknown} value
+   * @param {Array<{ name: string, type: string }>} bucket
+   * @param {string[]} preferredKeys
+   * @param {string} defaultType
+   * @returns {void}
+   */
+  _collectContributorEntry(value, bucket, preferredKeys, defaultType) {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => this._collectContributorEntry(entry, bucket, preferredKeys, defaultType));
+      return;
+    }
+
+    /** @type {string} */
+    let name = '';
+    /** @type {string} */
+    let type = '';
+
+    if (typeof value === 'string') {
+      name = value.trim();
+    } else if (value && typeof value === 'object') {
+      const record = /** @type {Record<string, unknown>} */ (value);
+
+      for (const key of preferredKeys) {
+        if (typeof record[key] === 'string' && record[key].trim()) {
+          name = record[key].trim();
+          break;
+        }
+      }
+
+      if (!name) {
+        const attributes = record.attributes;
+        if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
+          const attributeRecord = /** @type {Record<string, unknown>} */ (attributes);
+          for (const key of preferredKeys) {
+            if (typeof attributeRecord[key] === 'string' && attributeRecord[key].trim()) {
+              name = attributeRecord[key].trim();
+              break;
+            }
+          }
+
+          if (!name) {
+            const localizedName = this._extractLocalizedName(attributeRecord.name);
+            if (localizedName) {
+              name = localizedName;
+            }
+          }
+
+          if (typeof attributeRecord.type === 'string' && attributeRecord.type.trim()) {
+            type = attributeRecord.type.trim();
+          } else if (typeof attributeRecord.role === 'string' && attributeRecord.role.trim()) {
+            type = attributeRecord.role.trim();
+          }
+        }
+      }
+
+      if (!name) {
+        const localizedName = this._extractLocalizedName(record.name);
+        if (localizedName) {
+          name = localizedName;
+        }
+      }
+
+      if (typeof record.type === 'string' && record.type.trim()) {
+        type = record.type.trim();
+      } else if (typeof record.role === 'string' && record.role.trim()) {
+        type = record.role.trim();
+      }
+    }
+
+    if (!name) {
+      return;
+    }
+
+    const normalizedType = type || defaultType;
+    const normalizedName = name.toLowerCase();
+    const existingSameNameIndex = bucket.findIndex((item) => item.name.toLowerCase() === normalizedName);
+
+    if (normalizedType === defaultType) {
+      if (existingSameNameIndex >= 0) {
+        return;
+      }
+    } else if (existingSameNameIndex >= 0) {
+      const existing = bucket[existingSameNameIndex];
+      if (existing.type.toLowerCase() === normalizedType.toLowerCase()) {
+        return;
+      }
+      if (existing.type.toLowerCase() === defaultType.toLowerCase()) {
+        bucket.splice(existingSameNameIndex, 1);
+      }
+    }
+
+    bucket.push({ name, type: normalizedType });
+  }
+
+  /**
+   * @param {unknown} value
+   * @param {string[]} bucket
+   * @param {Set<object>} visited
+   * @param {string[]} preferredKeys
+   * @param {boolean} allowPlainString
+   * @returns {void}
+   */
+  _collectMetadataStringValues(value, bucket, visited, preferredKeys, allowPlainString) {
+    if (typeof value === 'string') {
+      if (allowPlainString) {
+        const normalized = value.trim();
+        if (normalized) {
+          bucket.push(normalized);
+        }
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((entry) => this._collectMetadataStringValues(entry, bucket, visited, preferredKeys, allowPlainString));
+      return;
+    }
+
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+
+    const record = /** @type {Record<string, unknown>} */ (value);
+    if (visited.has(record)) {
+      return;
+    }
+    visited.add(record);
+
+    for (const key of preferredKeys) {
+      const directValue = record[key];
+      if (typeof directValue === 'string' && directValue.trim()) {
+        bucket.push(directValue.trim());
+        return;
+      }
+      if (directValue && typeof directValue === 'object') {
+        const beforeLength = bucket.length;
+        this._collectMetadataStringValues(directValue, bucket, visited, preferredKeys, true);
+        if (bucket.length > beforeLength) {
+          return;
+        }
+      }
+    }
+
+    const attributes = record.attributes;
+    if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
+      const attributeRecord = /** @type {Record<string, unknown>} */ (attributes);
+
+      for (const key of preferredKeys) {
+        const attrValue = attributeRecord[key];
+        if (typeof attrValue === 'string' && attrValue.trim()) {
+          bucket.push(attrValue.trim());
+          return;
+        }
+      }
+
+      const localizedName = this._extractLocalizedName(attributeRecord.name);
+      if (localizedName) {
+        bucket.push(localizedName);
+        return;
+      }
+    }
+
+    const localizedName = this._extractLocalizedName(record.name);
+    if (localizedName) {
+      bucket.push(localizedName);
+    }
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {string | null}
+   */
+  _extractLocalizedName(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    for (const candidate of Object.values(value)) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+
+    return null;
   }
 
   /**

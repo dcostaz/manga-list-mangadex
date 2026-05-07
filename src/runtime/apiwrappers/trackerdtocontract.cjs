@@ -1,6 +1,6 @@
 'use strict';
 
-const TRACKER_DTO_CONTRACT_VERSION = '1.0.0';
+const TRACKER_DTO_CONTRACT_VERSION = '1.1.0';
 const TRACKER_SETTINGS_CONTRACT_VERSION = '1.0.0';
 
 module.exports = {
