@@ -436,7 +436,7 @@
       "default": true,
       "description": "Enable automatic retry on transient failures",
       "readOnly": false,
-      "isBasic": true,
+      "isBasic": false,
       "category": "general",
       "order": 140
     },
