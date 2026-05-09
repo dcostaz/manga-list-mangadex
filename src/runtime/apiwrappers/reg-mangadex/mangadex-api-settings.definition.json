@@ -264,8 +264,8 @@
       "required": true,
       "default": "MangaDex",
       "description": "Display name for UI",
-      "readOnly": false,
-      "isBasic": true,
+      "readOnly": true,
+      "isBasic": false,
       "category": "display",
       "order": 10
     },
@@ -274,8 +274,8 @@
       "required": true,
       "default": "images/manga-dex.svg",
       "description": "Path to icon image",
-      "readOnly": false,
-      "isBasic": true,
+      "readOnly": true,
+      "isBasic": false,
       "category": "paths",
       "order": 290
     },
