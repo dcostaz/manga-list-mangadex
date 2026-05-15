@@ -117,3 +117,6 @@ These suites cover build/manifest compatibility, mapper normalization,
 settings contracts and baseline matrix checks, wrapper lifecycle,
 token lifecycle behavior, read and write orchestration flows,
 and search/cover runtime behavior.
+
+Mapper normalization includes contributor role cleanup for publishers,
+including canonical alias mapping (`Publisher` -> `Original`) before dedupe.

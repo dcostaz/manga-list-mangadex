@@ -188,6 +188,26 @@ test('wave0 mapper contract - toSeriesDetailDto maps enriched nested manga paylo
   });
 });
 
+test('wave0 mapper contract - toSeriesDetailDto canonicalizes publisher role alias to Original', () => {
+  const mapper = new MangaDexTrackerMapper();
+  const dto = mapper.toSeriesDetailDto({
+    payload: {
+      id: 901,
+      title: 'Alias Publisher Series',
+      publishers: [
+        { publisher_name: 'Naver', type: 'Publisher' },
+        { publisher_name: 'Naver', type: 'Original' },
+        { publisher_name: 'Line Webtoon', role: 'publisher' }
+      ]
+    }
+  });
+
+  assert.deepEqual(dto && dto.publishers, [
+    { name: 'Naver', type: 'Original' },
+    { name: 'Line Webtoon', type: 'Original' }
+  ]);
+});
+
 test('wave0 mapper contract - toStatusDto normalizes flat and nested payload status fields', () => {
   const mapper = new MangaDexTrackerMapper();
 

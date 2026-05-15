@@ -97,7 +97,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 300
+      "order": 710
     },
     "api.endpoints.refreshToken.template": {
       "type": "string",
@@ -117,7 +117,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 310
+      "order": 720
     },
     "api.endpoints.manga.template": {
       "type": "string",
@@ -137,7 +137,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 320
+      "order": 730
     },
     "api.endpoints.cover.template": {
       "type": "string",
@@ -157,7 +157,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 330
+      "order": 740
     },
     "api.endpoints.follow.template": {
       "type": "string",
@@ -177,7 +177,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 340
+      "order": 750
     },
     "api.endpoints.status.template": {
       "type": "string",
@@ -197,7 +197,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 350
+      "order": 760
     },
     "statusMapping.READING": {
       "type": "string",
@@ -205,7 +205,7 @@
       "default": "reading",
       "description": "MangaDex reading status value",
       "readOnly": true,
-      "isBasic": false,
+      "isBasic": true,
       "category": "general",
       "order": 70
     },
@@ -215,7 +215,7 @@
       "default": "completed",
       "description": "MangaDex completed status value",
       "readOnly": true,
-      "isBasic": false,
+      "isBasic": true,
       "category": "general",
       "order": 80
     },
@@ -225,7 +225,7 @@
       "default": "plan_to_read",
       "description": "MangaDex plan to read status value",
       "readOnly": true,
-      "isBasic": false,
+      "isBasic": true,
       "category": "general",
       "order": 90
     },
@@ -235,7 +235,7 @@
       "default": "on_hold",
       "description": "MangaDex on hold status value",
       "readOnly": true,
-      "isBasic": false,
+      "isBasic": true,
       "category": "general",
       "order": 100
     },
@@ -245,7 +245,7 @@
       "default": "dropped",
       "description": "MangaDex dropped status value",
       "readOnly": true,
-      "isBasic": false,
+      "isBasic": true,
       "category": "general",
       "order": 110
     },
@@ -255,7 +255,7 @@
       "default": "re_reading",
       "description": "MangaDex re-reading status value",
       "readOnly": true,
-      "isBasic": false,
+      "isBasic": true,
       "category": "general",
       "order": 120
     },
@@ -565,7 +565,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 450
+      "order": 770
     },
     "cache.ttl.searchResults": {
       "type": "number",
@@ -575,7 +575,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 460
+      "order": 780
     },
     "cache.ttl.coverUrls": {
       "type": "number",
@@ -585,7 +585,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 470
+      "order": 790
     },
     "cache.ttl.accessToken": {
       "type": "number",
@@ -595,7 +595,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 480
+      "order": 800
     },
     "cache.ttl.refreshToken": {
       "type": "number",
@@ -605,7 +605,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 490
+      "order": 810
     },
     "cache.ttl.default": {
       "type": "number",
@@ -711,7 +711,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 580
+      "order": 820
     },
     "rateLimit.perEndpoint.refreshToken": {
       "type": "number",
@@ -721,7 +721,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 590
+      "order": 830
     },
     "rateLimit.perEndpoint.manga": {
       "type": "number",
@@ -731,7 +731,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 600
+      "order": 840
     },
     "rateLimit.perEndpoint.cover": {
       "type": "number",
@@ -741,7 +741,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 610
+      "order": 850
     },
     "rateLimit.perEndpoint.follow": {
       "type": "number",
@@ -751,7 +751,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 620
+      "order": 860
     },
     "rateLimit.perEndpoint.status": {
       "type": "number",
@@ -761,7 +761,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 630
+      "order": 870
     },
     "resilience.circuitBreaker.enabled": {
       "type": "boolean",
@@ -833,7 +833,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "network",
-      "order": 280
+      "order": 190
     },
     "resilience.healthCheck.interval": {
       "type": "number",

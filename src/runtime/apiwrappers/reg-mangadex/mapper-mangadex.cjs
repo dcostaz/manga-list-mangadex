@@ -539,6 +539,29 @@ class MangaDexTrackerMapper {
       return;
     }
 
+    const isPublisherContributorList = Array.isArray(preferredKeys)
+      && preferredKeys.some((key) => key === 'publisher_name' || key === 'publisherName' || key === 'publisher');
+
+    /** @param {unknown} rawType */
+    const normalizeContributorType = (rawType) => {
+      if (typeof rawType !== 'string') {
+        return '';
+      }
+
+      const trimmed = rawType.trim();
+      if (!trimmed) {
+        return '';
+      }
+
+      if (!isPublisherContributorList) {
+        return trimmed;
+      }
+
+      return trimmed.toLowerCase() === 'publisher'
+        ? 'Original'
+        : trimmed;
+    };
+
     /** @type {string} */
     let name = '';
     /** @type {string} */
@@ -575,9 +598,9 @@ class MangaDexTrackerMapper {
           }
 
           if (typeof attributeRecord.type === 'string' && attributeRecord.type.trim()) {
-            type = attributeRecord.type.trim();
+            type = normalizeContributorType(attributeRecord.type);
           } else if (typeof attributeRecord.role === 'string' && attributeRecord.role.trim()) {
-            type = attributeRecord.role.trim();
+            type = normalizeContributorType(attributeRecord.role);
           }
         }
       }
@@ -590,9 +613,9 @@ class MangaDexTrackerMapper {
       }
 
       if (typeof record.type === 'string' && record.type.trim()) {
-        type = record.type.trim();
+        type = normalizeContributorType(record.type);
       } else if (typeof record.role === 'string' && record.role.trim()) {
-        type = record.role.trim();
+        type = normalizeContributorType(record.role);
       }
     }
 
