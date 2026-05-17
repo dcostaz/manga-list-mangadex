@@ -99,6 +99,32 @@ async function createWrapper(httpClient, cacheAdapter) {
   return wrapper;
 }
 
+/**
+ * @param {CoverSearchResult} cover
+ */
+function assertCoverSearchContract(cover) {
+  assert.equal(typeof cover.source, 'string');
+  assert.equal(cover.source.length > 0, true);
+  assert.equal(typeof cover.title, 'string');
+  assert.equal(cover.title.length > 0, true);
+  assert.equal(typeof cover.thumbnailUrl, 'string');
+  assert.equal(cover.thumbnailUrl.length > 0, true);
+  assert.equal(typeof cover.canonicalUrl, 'string');
+  assert.equal(cover.canonicalUrl.length > 0, true);
+
+  assert.equal(typeof cover.tracker?.id, 'string');
+  assert.equal(cover.tracker.id.length > 0, true);
+  assert.equal(typeof cover.tracker?.url, 'string');
+  assert.equal(cover.tracker.url.length > 0, true);
+
+  assert.equal(typeof cover.fetchedAt, 'string');
+  assert.equal(cover.fetchedAt.length > 0, true);
+  assert.equal(Number.isFinite(cover.telemetry?.durationMs), true);
+  assert.equal(typeof cover.telemetry?.cacheHit, 'boolean');
+  assert.equal(Number.isInteger(cover.telemetry?.attempts), true);
+  assert.equal((cover.telemetry?.attempts || 0) >= 1, true);
+}
+
 test('search flow - searchTrackers prioritizes exact match over fuzzy match', async () => {
   const { cacheAdapter } = createMockCacheAdapter();
   const { client, hooks: httpHooks } = createMockHttpClient();
@@ -230,6 +256,158 @@ test('search flow - searchTrackersRaw prioritizes exact matches over fuzzy match
   assert.equal(typeof raw.payload.data[0]?.attributes, 'object');
 });
 
+test('search flow - searchTrackersRaw evaluates alias query after weak primary title results and returns exact alias snapshot', async () => {
+  const { cacheAdapter } = createMockCacheAdapter();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = () => ({
+    status: 200,
+    data: { access_token: 'search-access', refresh_token: 'search-refresh' },
+  });
+
+  httpHooks.getHandler = (url, config) => {
+    const value = String(url);
+    const query = config && typeof config === 'object' && config.params && typeof config.params === 'object'
+      ? String(config.params.title || '')
+      : '';
+
+    if (value.endsWith('/manga') && query === 'Bad Primary Title') {
+      return {
+        status: 200,
+        data: {
+          data: [
+            {
+              id: 'weak-primary',
+              attributes: {
+                title: { en: 'Bad Primary Title Side Story' },
+                altTitles: [],
+              },
+            },
+          ],
+        },
+      };
+    }
+
+    if (value.endsWith('/manga') && query === 'Alias Exact Title') {
+      return {
+        status: 200,
+        data: {
+          data: [
+            {
+              id: 'alias-exact',
+              attributes: {
+                title: { en: 'Alias Exact Title' },
+                altTitles: [{ ja: 'Alias Exact' }],
+              },
+            },
+          ],
+        },
+      };
+    }
+
+    return { status: 200, data: { data: [] } };
+  };
+
+  const wrapper = await createWrapper(client, cacheAdapter);
+  const raw = await wrapper.searchTrackersRaw(
+    {
+      title: 'Bad Primary Title',
+      aliases: ['Alias Exact Title'],
+    },
+    { useCache: false },
+  );
+
+  const searchCalls = httpHooks.getCalls
+    .filter((call) => String(call.url).endsWith('/manga'))
+    .map((call) => call.config && call.config.params ? String(call.config.params.title || '') : '');
+
+  assert.deepEqual(searchCalls, ['Bad Primary Title', 'Alias Exact Title']);
+  assert.equal(raw.payload.data.length, 1);
+  assert.equal(raw.payload.data[0]?.id, 'alias-exact');
+  assert.equal(raw.payload.data[0]?.title, 'Alias Exact Title');
+});
+
+test('search flow - searchTrackers prefers highest-score title snapshot when no exact match exists', async () => {
+  const { cacheAdapter } = createMockCacheAdapter();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = () => ({
+    status: 200,
+    data: { access_token: 'search-access', refresh_token: 'search-refresh' },
+  });
+
+  httpHooks.getHandler = (url, config) => {
+    const value = String(url);
+    const query = config && typeof config === 'object' && config.params && typeof config.params === 'object'
+      ? String(config.params.title || '')
+      : '';
+
+    if (value.endsWith('/manga') && query === 'Weak Primary') {
+      return {
+        status: 200,
+        data: {
+          data: [
+            {
+              id: 'weak-fuzzy',
+              type: 'manga',
+              attributes: {
+                title: { en: 'Weak Hero Primary' },
+                altTitles: [],
+                description: { en: 'Weak fuzzy candidate' },
+              },
+              relationships: [],
+            },
+          ],
+        },
+      };
+    }
+
+    if (value.endsWith('/manga') && query === 'Better Alias') {
+      return {
+        status: 200,
+        data: {
+          data: [
+            {
+              id: 'better-fuzzy',
+              type: 'manga',
+              attributes: {
+                title: { en: 'Better Alias Chronicles' },
+                altTitles: [{ ja: 'Better Alias Tale' }],
+                description: { en: 'Higher fuzzy candidate' },
+              },
+              relationships: [],
+            },
+          ],
+        },
+      };
+    }
+
+    if (value.endsWith('/cover')) {
+      return { status: 200, data: { data: [] } };
+    }
+
+    return { status: 200, data: { data: [] } };
+  };
+
+  const wrapper = await createWrapper(client, cacheAdapter);
+  const matches = await wrapper.searchTrackers(
+    {
+      title: 'Weak Primary',
+      aliases: ['Better Alias'],
+    },
+    { useCache: false },
+  );
+
+  const searchCalls = httpHooks.getCalls
+    .filter((call) => String(call.url).endsWith('/manga'))
+    .map((call) => call.config && call.config.params ? String(call.config.params.title || '') : '');
+
+  assert.deepEqual(searchCalls, ['Weak Primary', 'Better Alias']);
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.trackerId, 'better-fuzzy');
+  assert.equal(matches[0]?.matchType, 'fuzzy');
+});
+
 test('cover flow - searchCovers falls back to fuzzy match and normalizes dimensions', async () => {
   const { cacheAdapter } = createMockCacheAdapter();
   const { client, hooks: httpHooks } = createMockHttpClient();
@@ -287,9 +465,11 @@ test('cover flow - searchCovers falls back to fuzzy match and normalizes dimensi
   const covers = await wrapper.searchCovers({ title: 'Solo Leveling' }, { useCache: false });
 
   assert.equal(covers.length, 1);
+  assertCoverSearchContract(covers[0]);
   assert.equal(covers[0].tracker.id, 'fuzzy-cover-id');
   assert.deepEqual(covers[0].dimensions, { width: 1200, height: 1800 });
   assert.equal(covers[0].tracker.fileName, 'fuzzy-cover.jpg');
+  assert.equal(covers[0].tracker.score, 85);
 });
 
 test('cover flow - searchCovers emits progress events and sorts covers by volume', async () => {
@@ -340,8 +520,12 @@ test('cover flow - searchCovers emits progress events and sorts covers by volume
   assert.equal(progressEvents[0], 'running');
   assert.equal(progressEvents[progressEvents.length - 1], 'complete');
   assert.equal(covers.length, 2);
+  assertCoverSearchContract(covers[0]);
+  assertCoverSearchContract(covers[1]);
   assert.equal(covers[0].tracker.volume, '1');
   assert.equal(covers[1].tracker.volume, '3');
+  assert.equal(covers[0].tracker.score, 100);
+  assert.equal(covers[1].tracker.score, 100);
 });
 
 test('cover flow - downloadCover writes file and reuses cache', async () => {

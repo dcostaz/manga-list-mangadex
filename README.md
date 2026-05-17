@@ -53,6 +53,12 @@ Contract version governance:
 	use `metadata.settingsContractVersion` matching `TRACKER_SETTINGS_CONTRACT_VERSION`.
 4. Build fails fast on mismatch to prevent contract drift.
 
+Search DTO contract v2 notes:
+
+1. `toSearchResultDtos` now emits `wrapperEvidence` instead of top-level `confidence` and `matchType`.
+2. `wrapperEvidence` is wrapper-local evidence (`classification`, `matchedField`, optional score/similarity signals).
+3. Final UI `confidence` and `matchType` are host-owned and computed in manga-list for cross-tracker normalization.
+
 Type definitions governance:
 
 1. Tracker-local typedefs live in `types/trackertypedefs.d.ts`.
@@ -117,6 +123,23 @@ These suites cover build/manifest compatibility, mapper normalization,
 settings contracts and baseline matrix checks, wrapper lifecycle,
 token lifecycle behavior, read and write orchestration flows,
 and search/cover runtime behavior.
+
+Search selection behavior for tracker lookup:
+
+1. Search evaluates the full title candidate list generated from title, aliases, and alternative titles.
+2. For each candidate query, search results are ranked by exact, then fuzzy match strength.
+3. The wrapper keeps the highest-scoring query snapshot and only short-circuits when a 100 percent exact match is found.
+4. If no exact match exists, the best fuzzy-scored query snapshot is used as the returned result set.
+
+Cover strategy trait declarations (`apiwrappers/reg-mangadex/tracker-module.cjs`):
+
+1. `supportsCoverInSearchResult`: `false`
+2. `supportsCoverByIdLookup`: `true`
+3. `supportsMultiCoverPerId`: `true`
+4. `supportsBatchCoverByIdLookup`: `false`
+5. `preferredCoverHydrationCount`: `1`
+
+These traits are capability hints for host orchestration. Internal retrieval flow remains wrapper-owned.
 
 Mapper normalization includes contributor role cleanup for publishers,
 including canonical alias mapping (`Publisher` -> `Original`) before dedupe.

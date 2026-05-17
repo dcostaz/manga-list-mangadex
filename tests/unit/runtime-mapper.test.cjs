@@ -52,8 +52,15 @@ test('wave0 mapper contract - toSearchResultDtos maps valid compact rows and dro
     alternativeTitles: [],
     coverUrl: null,
     metadata: null,
-    confidence: 100,
-    matchType: 'exact',
+    wrapperEvidence: {
+      classification: 'weak',
+      matchedField: 'title',
+      matchedText: 'A',
+      similarity: null,
+      tokenOverlap: null,
+      wrapperScore: null,
+      algorithmVersion: 'mangadex-search-v2',
+    },
   });
 });
 
@@ -85,8 +92,15 @@ test('wave0 mapper contract - toSearchResultDtos accepts enriched rows with attr
     alternativeTitles: ['TBATE'],
     coverUrl: 'https://img.example/tbate-thumb.jpg',
     metadata: { matchedTitle: 'TBATE' },
-    confidence: 87,
-    matchType: 'fuzzy',
+    wrapperEvidence: {
+      classification: 'fuzzy',
+      matchedField: 'alternativeTitles',
+      matchedText: 'TBATE',
+      similarity: null,
+      tokenOverlap: null,
+      wrapperScore: 0.87,
+      algorithmVersion: 'mangadex-search-v2',
+    },
   });
 });
 

@@ -67,17 +67,10 @@ class MangaDexTrackerMapper {
           attributeAlternativeTitles,
           attributeTitleVariants,
         ], title);
-
-        const matchType = row && typeof row.matchType === 'string' && ['exact', 'fuzzy', 'manual'].includes(row.matchType)
-          ? row.matchType
-          : 'exact';
-        const confidence = row && typeof row.confidence === 'number'
-          ? row.confidence
-          : matchType === 'exact'
-            ? 100
-            : matchType === 'fuzzy'
-              ? 80
-              : 0;
+        const rowMetadata = row && row.metadata && typeof row.metadata === 'object'
+          ? row.metadata
+          : null;
+        const wrapperEvidence = this._buildWrapperEvidence(row, rowMetadata, title, alternativeTitles);
 
         const coverUrl = row && typeof row.coverUrl === 'string'
           ? row.coverUrl
@@ -89,12 +82,85 @@ class MangaDexTrackerMapper {
           title,
           alternativeTitles,
           coverUrl,
-          metadata: row && row.metadata && typeof row.metadata === 'object' ? row.metadata : null,
-          confidence,
-          matchType,
+          metadata: rowMetadata,
+          wrapperEvidence,
         };
       })
       .filter((entry) => entry !== null);
+  }
+
+  /**
+   * @param {Record<string, unknown>} row
+   * @param {Record<string, unknown> | null} rowMetadata
+   * @param {string} title
+   * @param {string[]} alternativeTitles
+   * @returns {Record<string, unknown>}
+   */
+  _buildWrapperEvidence(row, rowMetadata, title, alternativeTitles) {
+    const rawMatchType = typeof row.matchType === 'string' ? row.matchType.trim().toLowerCase() : '';
+    const rawMatchedTitle = this._normalizeString(
+      row.hit_title,
+      row.matchedTitle,
+      rowMetadata && rowMetadata.matchedTitle,
+      title
+    );
+    const normalizedTitle = typeof title === 'string' ? title.trim().toLowerCase() : '';
+    const normalizedMatchedTitle = typeof rawMatchedTitle === 'string' ? rawMatchedTitle.trim().toLowerCase() : '';
+
+    let classification = 'weak';
+    if (rawMatchType === 'exact') {
+      classification = 'exact';
+      const hasAliasExact = Boolean(
+        normalizedMatchedTitle
+        && normalizedTitle
+        && normalizedMatchedTitle !== normalizedTitle
+        && alternativeTitles.some((entry) => typeof entry === 'string' && entry.trim().toLowerCase() === normalizedMatchedTitle)
+      );
+      if (hasAliasExact) {
+        classification = 'alias-exact';
+      }
+    } else if (rawMatchType === 'fuzzy') {
+      classification = 'fuzzy';
+    }
+
+    const rawMatchedField = this._normalizeString(
+      row.matchedField,
+      rowMetadata && rowMetadata.matchedField
+    );
+    const matchedField = rawMatchedField === 'title'
+      ? 'title'
+      : rawMatchedField === 'alternativeTitles'
+        ? 'alternativeTitles'
+        : rawMatchedField === 'metadata'
+          ? 'metadata'
+          : normalizedMatchedTitle && normalizedMatchedTitle !== normalizedTitle
+            ? 'alternativeTitles'
+            : 'title';
+
+    const similarity = this._normalizeUnitInterval(
+      row.similarity,
+      rowMetadata && rowMetadata.similarity
+    );
+    const tokenOverlap = this._normalizeUnitInterval(
+      row.tokenOverlap,
+      rowMetadata && rowMetadata.tokenOverlap
+    );
+    const wrapperScore = this._normalizeUnitInterval(
+      row.wrapperScore,
+      rowMetadata && rowMetadata.wrapperScore,
+      row.confidence,
+      rowMetadata && rowMetadata.confidence
+    );
+
+    return {
+      classification,
+      matchedField,
+      matchedText: rawMatchedTitle,
+      similarity,
+      tokenOverlap,
+      wrapperScore,
+      algorithmVersion: 'mangadex-search-v2',
+    };
   }
 
   /**
@@ -407,6 +473,27 @@ class MangaDexTrackerMapper {
           return parsed;
         }
       }
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {...unknown} values
+   * @returns {number | null}
+   */
+  _normalizeUnitInterval(...values) {
+    for (const value of values) {
+      if (typeof value !== 'number' || Number.isNaN(value)) {
+        continue;
+      }
+
+      const normalized = value > 1 ? value / 100 : value;
+      if (normalized < 0 || normalized > 1) {
+        continue;
+      }
+
+      return normalized;
     }
 
     return null;

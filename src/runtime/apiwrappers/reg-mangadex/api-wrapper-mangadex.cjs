@@ -648,19 +648,15 @@ class MangaDexAPIWrapper {
     const useCache = !(options && typeof options === 'object' && options.useCache === false);
     const targetTitles = this._buildTitleList(query, options);
 
-    for (const title of targetTitles) {
-      const searchResult = await this.searchManga(title, useCache);
-      const rows = Array.isArray(searchResult && searchResult.data)
-        ? searchResult.data
-        : [];
+    const bestSnapshot = await this._selectBestSearchSnapshot(targetTitles, {
+      useCache,
+      limit: 5,
+      stopOnExact: true,
+    });
 
-      if (rows.length === 0) {
-        continue;
-      }
-
-      const ranked = this._rankSearchRows(rows, targetTitles);
+    if (bestSnapshot && Array.isArray(bestSnapshot.rows) && bestSnapshot.rows.length > 0) {
       const mapped = (await Promise.all(
-        ranked.map(async (row) => {
+        bestSnapshot.rows.map(async (row) => {
           const rowData = row && typeof row === 'object' && row.row && typeof row.row === 'object'
             ? row.row
             : null;
@@ -754,22 +750,15 @@ class MangaDexAPIWrapper {
     const useCache = !(options && typeof options === 'object' && options.useCache === false);
     const targetTitles = this._buildTitleList(searchable, options);
 
-    for (const searchTitle of targetTitles) {
-      const searchResult = await this.searchManga(searchTitle, useCache);
-      const rows = Array.isArray(searchResult && searchResult.data)
-        ? searchResult.data
-        : [];
-      if (rows.length === 0) {
-        continue;
-      }
+    const bestSnapshot = await this._selectBestSearchSnapshot(targetTitles, {
+      useCache,
+      limit: 5,
+      stopOnExact: true,
+    });
 
-      const ranked = this._rankSearchRows(rows, targetTitles);
-      if (ranked.length === 0) {
-        continue;
-      }
-
+    if (bestSnapshot && Array.isArray(bestSnapshot.rows) && bestSnapshot.rows.length > 0) {
       const normalized = await Promise.all(
-        ranked.map(async (entry) => {
+        bestSnapshot.rows.map(async (entry) => {
           const base = await this._normalizeSeriesData(entry.row, useCache);
           return {
             ...base,
@@ -1474,6 +1463,9 @@ class MangaDexAPIWrapper {
       let mangaTitle = mangaCoreEntry.title;
       let searchAttempts = trackerId ? 1 : 0;
       let searchCacheHit = false;
+      /** @type {'exact' | 'fuzzy'} */
+      let matchType = trackerId ? 'exact' : 'fuzzy';
+      let similarity = trackerId ? 1 : 0;
 
       if (!mangaId) {
         const titles = this._buildTitleList(mangaCoreEntry, options);
@@ -1486,6 +1478,10 @@ class MangaDexAPIWrapper {
         mangaId = matchResult.match.id;
         searchAttempts = matchResult.attempts;
         searchCacheHit = Boolean(matchResult.cacheHit);
+        matchType = matchResult.matchType === 'exact' ? 'exact' : 'fuzzy';
+        similarity = typeof matchResult.similarity === 'number' && Number.isFinite(matchResult.similarity)
+          ? matchResult.similarity
+          : 0;
 
         const matchedTitles = this._collectCandidateTitles(matchResult.match);
         if (matchedTitles.length > 0) {
@@ -1507,6 +1503,7 @@ class MangaDexAPIWrapper {
         cacheHit: Boolean(searchCacheHit || coverMeta.cacheHit),
         attempts: Math.max(searchAttempts, 1),
       };
+      const score = this._resolveCoverSearchScore(matchType, similarity);
 
       const normalized = covers.map((cover) => this._normalizeCoverResult(cover, {
         mangaId,
@@ -1514,6 +1511,8 @@ class MangaDexAPIWrapper {
         canonicalUrl: canonicalUrl || '',
         fetchedAt,
         telemetry,
+        matchType,
+        score,
       }));
 
       normalized.sort((a, b) => {
@@ -1595,7 +1594,9 @@ class MangaDexAPIWrapper {
    *  mangaTitle: string,
    *  canonicalUrl: string,
    *  fetchedAt: string,
-   *  telemetry: Record<string, unknown>
+  *  telemetry: Record<string, unknown>,
+  *  matchType?: 'exact' | 'fuzzy',
+  *  score?: number,
    * }} context
    * @returns {Record<string, unknown>}
    */
@@ -1620,7 +1621,9 @@ class MangaDexAPIWrapper {
         fileName,
         volume: typeof attributes.volume === 'string' ? attributes.volume : '',
         description: typeof attributes.description === 'string' ? attributes.description : context.mangaTitle,
+        score: typeof context.score === 'number' ? context.score : undefined,
         extras: {
+          matchType: context.matchType === 'exact' ? 'exact' : 'fuzzy',
           locale: attributes.locale,
           version: attributes.version,
           relationships: Array.isArray(cover && cover.relationships) ? cover.relationships : [],
@@ -1634,52 +1637,178 @@ class MangaDexAPIWrapper {
   /**
    * @param {string[]} titles
    * @param {boolean} useCache
-   * @returns {Promise<{ match: Record<string, unknown> | undefined, attempts: number, cacheHit: boolean }>}
+  * @returns {Promise<{
+  *  match: Record<string, unknown> | undefined,
+  *  attempts: number,
+  *  cacheHit: boolean,
+  *  matchType: 'exact' | 'fuzzy',
+  *  similarity: number,
+  * }>}
    */
   async _findExactMatch(titles, useCache) {
+    const bestSnapshot = await this._selectBestSearchSnapshot(titles, {
+      useCache,
+      limit: 5,
+      stopOnExact: true,
+    });
+
+    if (bestSnapshot && bestSnapshot.bestRow && bestSnapshot.bestRow.row) {
+      return {
+        match: bestSnapshot.bestRow.row,
+        attempts: bestSnapshot.attempts,
+        cacheHit: bestSnapshot.cacheHit,
+        matchType: bestSnapshot.bestRow.matchType,
+        similarity: bestSnapshot.bestRow.similarity,
+      };
+    }
+
+    return {
+      match: undefined,
+      attempts: bestSnapshot ? bestSnapshot.attempts : 0,
+      cacheHit: bestSnapshot ? bestSnapshot.cacheHit : false,
+      matchType: 'fuzzy',
+      similarity: 0,
+    };
+  }
+
+  /**
+   * @param {'exact' | 'fuzzy'} matchType
+   * @param {number} similarity
+   * @returns {number}
+   */
+  _resolveCoverSearchScore(matchType, similarity) {
+    if (matchType === 'exact') {
+      return 100;
+    }
+
+    const boundedSimilarity = typeof similarity === 'number' && Number.isFinite(similarity)
+      ? Math.max(0, Math.min(1, similarity))
+      : 0.8;
+    return Math.max(70, Math.min(95, Math.round(boundedSimilarity * 100)));
+  }
+
+  /**
+   * Evaluate all candidate query titles and retain the best-ranked snapshot.
+   * Stops early only when an exact (100%) match appears.
+   * @param {string[]} targetTitles
+   * @param {{ useCache: boolean, limit: number, stopOnExact?: boolean }} options
+   * @returns {Promise<{
+   *  title: string,
+   *  rows: Array<{ row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number }>,
+   *  bestRow: { row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number } | null,
+   *  attempts: number,
+   *  cacheHit: boolean,
+   * } | null>}
+   */
+  async _selectBestSearchSnapshot(targetTitles, options) {
+    const normalizedTitles = Array.isArray(targetTitles)
+      ? targetTitles.filter((title) => typeof title === 'string' && title.trim().length > 0)
+      : [];
+    if (normalizedTitles.length === 0) {
+      return null;
+    }
+
+    const stopOnExact = !!(options && options.stopOnExact);
+    const limit = Number.isFinite(options?.limit) && options.limit > 0
+      ? Math.trunc(options.limit)
+      : 5;
+
+    /** @type {{
+     *  title: string,
+     *  rows: Array<{ row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number }>,
+     *  bestRow: { row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number } | null,
+     *  attempts: number,
+     *  cacheHit: boolean,
+     * } | null} */
+    let bestSnapshot = null;
+
     let attempts = 0;
     let cacheHit = false;
-    let fuzzyFallback = null;
-    let fuzzySimilarity = 0;
 
-    for (const title of titles) {
+    for (const title of normalizedTitles) {
       attempts += 1;
       const meta = { cacheHit: false };
-      const result = await this.searchManga(title, useCache, meta);
+      const searchResult = await this.searchManga(title, options?.useCache !== false, meta);
       cacheHit = cacheHit || Boolean(meta.cacheHit);
 
-      const rows = Array.isArray(result && result.data) ? result.data : [];
-      for (const row of rows) {
-        const candidateTitles = this._collectCandidateTitles(row);
-        const similarity = calculateTitleSimilarity(titles, candidateTitles);
-        if (similarity.hasExactMatch) {
-          return {
-            match: row,
-            attempts,
-            cacheHit,
-          };
-        }
+      const rows = Array.isArray(searchResult && searchResult.data)
+        ? searchResult.data
+        : [];
+      if (rows.length === 0) {
+        continue;
+      }
 
-        if (similarity.bestSimilarity >= 0.6 && similarity.bestSimilarity > fuzzySimilarity) {
-          fuzzyFallback = row;
-          fuzzySimilarity = similarity.bestSimilarity;
+      const ranked = this._rankSearchRows(rows, normalizedTitles);
+      if (ranked.length === 0) {
+        continue;
+      }
+
+      const topRows = ranked.slice(0, limit);
+      const bestRow = topRows.length > 0 ? topRows[0] : null;
+      if (!bestRow) {
+        continue;
+      }
+
+      const snapshot = {
+        title,
+        rows: topRows,
+        bestRow,
+        attempts,
+        cacheHit,
+      };
+
+      if (!bestSnapshot) {
+        bestSnapshot = snapshot;
+      } else {
+        const currentRank = this._resolveMatchTypeRank(bestSnapshot.bestRow ? bestSnapshot.bestRow.matchType : 'fuzzy');
+        const nextRank = this._resolveMatchTypeRank(bestRow.matchType);
+
+        if (nextRank < currentRank) {
+          bestSnapshot = snapshot;
+        } else if (nextRank === currentRank) {
+          const currentSimilarity = bestSnapshot.bestRow ? bestSnapshot.bestRow.similarity : 0;
+          if (bestRow.similarity > currentSimilarity) {
+            bestSnapshot = snapshot;
+          }
         }
+      }
+
+      if (stopOnExact && bestRow.matchType === 'exact') {
+        return {
+          ...snapshot,
+          attempts,
+          cacheHit,
+        };
       }
     }
 
-    if (fuzzyFallback) {
+    if (!bestSnapshot) {
       return {
-        match: fuzzyFallback,
+        title: '',
+        rows: [],
+        bestRow: null,
         attempts,
         cacheHit,
       };
     }
 
     return {
-      match: undefined,
+      ...bestSnapshot,
       attempts,
       cacheHit,
     };
+  }
+
+  /**
+   * @param {'exact'|'fuzzy'} matchType
+   * @returns {number}
+   */
+  _resolveMatchTypeRank(matchType) {
+    if (matchType === 'exact') {
+      return 0;
+    }
+
+    return 1;
   }
 
   /**
