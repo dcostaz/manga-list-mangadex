@@ -3,7 +3,7 @@
     "componentName": "MangaDexAPI",
     "description": "MangaDex runtime tracker package settings definition (tracker-specific extension)",
     "version": "1.0.0",
-    "lastModified": "2025-11-15T20:14:45.804Z",
+    "lastModified": "2026-05-24T18:37:44.217Z",
     "lifecycle": {
       "bootstrapPhase": "early",
       "dependencies": [],
@@ -11,37 +11,23 @@
     },
     "categories": [
       {
-        "id": "display",
-        "label": "Display & UI",
-        "description": "User interface and display options",
-        "order": 50,
-        "icon": "visibility"
-      },
-      {
         "id": "general",
-        "label": "General",
-        "description": "Basic configuration options",
+        "label": "Tracker Identity & Protocol",
+        "description": "Tracker display identity, authentication, and status protocol values",
         "order": 10,
         "icon": "settings"
       },
       {
         "id": "network",
         "label": "Network & API",
-        "description": "Network connections and external API configuration",
-        "order": 40,
+        "description": "Connection settings, health check endpoint, and API endpoint reference",
+        "order": 20,
         "icon": "cloud"
       },
       {
-        "id": "paths",
-        "label": "Paths & Directories",
-        "description": "File system paths and directory configuration",
-        "order": 20,
-        "icon": "folder"
-      },
-      {
         "id": "performance",
-        "label": "Performance & Caching",
-        "description": "Performance tuning and caching configuration",
+        "label": "Performance & Reliability",
+        "description": "Caching, rate limiting, retry, and resilience configuration",
         "order": 30,
         "icon": "speed"
       }
@@ -57,8 +43,8 @@
       "validation": {
         "pattern": "^https://"
       },
-      "readOnly": false,
-      "isBasic": true,
+      "readOnly": true,
+      "isBasic": false,
       "category": "network",
       "order": 200
     },
@@ -70,8 +56,8 @@
       "validation": {
         "pattern": "^https://"
       },
-      "readOnly": false,
-      "isBasic": true,
+      "readOnly": true,
+      "isBasic": false,
       "category": "network",
       "order": 210
     },
@@ -94,7 +80,7 @@
         "min": 0,
         "max": 60000
       },
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 710
@@ -114,7 +100,7 @@
       "required": false,
       "default": 0,
       "description": "Minimum delay between refresh token requests (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 720
@@ -134,7 +120,7 @@
       "required": false,
       "default": 1000,
       "description": "Minimum delay between manga requests (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 730
@@ -154,7 +140,7 @@
       "required": false,
       "default": 1000,
       "description": "Minimum delay between cover requests (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 740
@@ -174,7 +160,7 @@
       "required": false,
       "default": 1000,
       "description": "Minimum delay between follow requests (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 750
@@ -194,7 +180,7 @@
       "required": false,
       "default": 1000,
       "description": "Minimum delay between status requests (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 760
@@ -207,7 +193,7 @@
       "readOnly": true,
       "isBasic": true,
       "category": "general",
-      "order": 70
+      "order": 50
     },
     "statusMapping.COMPLETED": {
       "type": "string",
@@ -217,7 +203,7 @@
       "readOnly": true,
       "isBasic": true,
       "category": "general",
-      "order": 80
+      "order": 60
     },
     "statusMapping.PLAN_TO_READ": {
       "type": "string",
@@ -227,7 +213,7 @@
       "readOnly": true,
       "isBasic": true,
       "category": "general",
-      "order": 90
+      "order": 70
     },
     "statusMapping.ON_HOLD": {
       "type": "string",
@@ -237,7 +223,7 @@
       "readOnly": true,
       "isBasic": true,
       "category": "general",
-      "order": 100
+      "order": 80
     },
     "statusMapping.DROPPED": {
       "type": "string",
@@ -247,7 +233,7 @@
       "readOnly": true,
       "isBasic": true,
       "category": "general",
-      "order": 110
+      "order": 90
     },
     "statusMapping.RE_READING": {
       "type": "string",
@@ -257,16 +243,16 @@
       "readOnly": true,
       "isBasic": true,
       "category": "general",
-      "order": 120
+      "order": 100
     },
     "ui.label": {
       "type": "string",
       "required": true,
       "default": "MangaDex",
       "description": "Display name for UI",
-      "readOnly": false,
-      "isBasic": true,
-      "category": "display",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
       "order": 10
     },
     "ui.icon": {
@@ -274,10 +260,10 @@
       "required": true,
       "default": "images/manga-dex.svg",
       "description": "Path to icon image",
-      "readOnly": false,
-      "isBasic": true,
-      "category": "paths",
-      "order": 290
+      "readOnly": true,
+      "isBasic": false,
+      "category": "general",
+      "order": 20
     },
     "ui.credentialsTemplate": {
       "type": "array",
@@ -318,8 +304,8 @@
       "description": "Credential template for tracker auth prompts",
       "readOnly": true,
       "isBasic": false,
-      "category": "display",
-      "order": 20
+      "category": "general",
+      "order": 30
     },
     "credentials.primary": {
       "type": "credential",
@@ -361,8 +347,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "performance",
-      "order": 360
+      "category": "network",
+      "order": 10
     },
     "connection.timeout.request": {
       "type": "number",
@@ -375,8 +361,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "performance",
-      "order": 370
+      "category": "network",
+      "order": 20
     },
     "connection.timeout.search": {
       "type": "number",
@@ -389,8 +375,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "performance",
-      "order": 380
+      "category": "network",
+      "order": 30
     },
     "connection.pool.maxSockets": {
       "type": "number",
@@ -403,8 +389,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "performance",
-      "order": 390
+      "category": "network",
+      "order": 50
     },
     "connection.pool.maxFreeSockets": {
       "type": "number",
@@ -417,8 +403,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "performance",
-      "order": 400
+      "category": "network",
+      "order": 60
     },
     "connection.pool.keepAlive": {
       "type": "boolean",
@@ -427,8 +413,8 @@
       "description": "Enable HTTP keep-alive",
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 130
+      "category": "network",
+      "order": 40
     },
     "retry.enabled": {
       "type": "boolean",
@@ -437,8 +423,8 @@
       "description": "Enable automatic retry on transient failures",
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 140
+      "category": "performance",
+      "order": 300
     },
     "retry.maxAttempts": {
       "type": "number",
@@ -452,7 +438,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 410
+      "order": 310
     },
     "retry.backoff.type": {
       "type": "string",
@@ -468,8 +454,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 150
+      "category": "performance",
+      "order": 320
     },
     "retry.backoff.initialDelay": {
       "type": "number",
@@ -482,8 +468,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 160
+      "category": "performance",
+      "order": 330
     },
     "retry.backoff.maxDelay": {
       "type": "number",
@@ -497,7 +483,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 420
+      "order": 350
     },
     "retry.backoff.multiplier": {
       "type": "number",
@@ -510,8 +496,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 170
+      "category": "performance",
+      "order": 340
     },
     "retry.retryableErrors": {
       "type": "array",
@@ -528,8 +514,8 @@
       "description": "Retryable HTTP status codes and network errors",
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 180
+      "category": "performance",
+      "order": 360
     },
     "cache.enabled": {
       "type": "boolean",
@@ -539,30 +525,33 @@
       "readOnly": false,
       "isBasic": true,
       "category": "performance",
-      "order": 430
+      "order": 10
     },
     "cache.provider": {
       "type": "string",
       "required": true,
-      "default": "redis",
-      "description": "Cache provider (redis, memory)",
+      "default": "memory",
+      "description": "Cache provider: system (inherit host), memory, file, redis, or none",
       "validation": {
         "enum": [
+          "system",
+          "memory",
+          "file",
           "redis",
-          "memory"
+          "none"
         ]
       },
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 440
+      "order": 20
     },
     "cache.ttl.seriesMetadata": {
       "type": "number",
       "required": true,
       "default": 86400,
       "description": "Series metadata cache TTL (seconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 770
@@ -572,7 +561,7 @@
       "required": true,
       "default": 3600,
       "description": "Search results cache TTL (seconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 780
@@ -582,7 +571,7 @@
       "required": true,
       "default": 604800,
       "description": "Cover URLs cache TTL (seconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 790
@@ -592,7 +581,7 @@
       "required": true,
       "default": 900,
       "description": "Access token cache TTL (seconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 800
@@ -602,7 +591,7 @@
       "required": true,
       "default": 2592000,
       "description": "Refresh token cache TTL (seconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 810
@@ -615,7 +604,51 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 500
+      "order": 30
+    },
+    "search.fuzzyThreshold": {
+      "type": "number",
+      "required": true,
+      "default": 0.6,
+      "description": "Minimum title similarity score (0-1) to classify a candidate as a fuzzy match",
+      "validation": { "min": 0.01, "max": 0.99 },
+      "readOnly": false,
+      "isBasic": true,
+      "category": "performance",
+      "order": 520
+    },
+    "search.containmentScore": {
+      "type": "number",
+      "required": true,
+      "default": 0.85,
+      "description": "Similarity score assigned when one title slug contains the other, before Jaccard calculation",
+      "validation": { "min": 0.5, "max": 1.0 },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 530
+    },
+    "search.candidateLimit": {
+      "type": "number",
+      "required": true,
+      "default": 5,
+      "description": "Maximum ranked title candidates retained per search snapshot",
+      "validation": { "min": 1, "max": 25 },
+      "readOnly": false,
+      "isBasic": true,
+      "category": "performance",
+      "order": 540
+    },
+    "search.exactMatchPolicy": {
+      "type": "string",
+      "required": true,
+      "default": "first",
+      "description": "Stop on first exact title match (first) or evaluate all variants for best rank (highestScore)",
+      "validation": { "enum": ["first", "highestScore"] },
+      "readOnly": false,
+      "isBasic": false,
+      "category": "performance",
+      "order": 550
     },
     "rateLimit.global.enabled": {
       "type": "boolean",
@@ -625,7 +658,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 510
+      "order": 100
     },
     "rateLimit.global.maxConcurrent": {
       "type": "number",
@@ -639,7 +672,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 520
+      "order": 110
     },
     "rateLimit.global.maxPerSecond": {
       "type": "number",
@@ -653,7 +686,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 530
+      "order": 120
     },
     "rateLimit.global.maxPerMinute": {
       "type": "number",
@@ -667,7 +700,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 540
+      "order": 130
     },
     "rateLimit.global.queueSize": {
       "type": "number",
@@ -681,7 +714,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 550
+      "order": 140
     },
     "rateLimit.perEndpoint.enabled": {
       "type": "boolean",
@@ -691,7 +724,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 560
+      "order": 200
     },
     "rateLimit.perEndpoint.defaultDelay": {
       "type": "number",
@@ -701,14 +734,14 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 570
+      "order": 210
     },
     "rateLimit.perEndpoint.token": {
       "type": "number",
       "required": false,
       "default": 0,
       "description": "Token endpoint delay (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 820
@@ -718,7 +751,7 @@
       "required": false,
       "default": 0,
       "description": "Refresh token endpoint delay (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 830
@@ -728,7 +761,7 @@
       "required": false,
       "default": 1000,
       "description": "Manga endpoint delay (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 840
@@ -738,7 +771,7 @@
       "required": false,
       "default": 1000,
       "description": "Cover endpoint delay (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 850
@@ -748,7 +781,7 @@
       "required": false,
       "default": 1000,
       "description": "Follow endpoint delay (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 860
@@ -758,7 +791,7 @@
       "required": false,
       "default": 1000,
       "description": "Status endpoint delay (milliseconds)",
-      "readOnly": false,
+      "readOnly": true,
       "isBasic": false,
       "category": "performance",
       "order": 870
@@ -770,8 +803,8 @@
       "description": "Enable circuit breaker pattern (P2 - MEDIUM: disabled until Phase 10.8)",
       "readOnly": false,
       "isBasic": false,
-      "category": "display",
-      "order": 30
+      "category": "performance",
+      "order": 400
     },
     "resilience.circuitBreaker.failureThreshold": {
       "type": "number",
@@ -784,8 +817,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "display",
-      "order": 40
+      "category": "performance",
+      "order": 410
     },
     "resilience.circuitBreaker.failureWindow": {
       "type": "number",
@@ -798,8 +831,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "display",
-      "order": 50
+      "category": "performance",
+      "order": 420
     },
     "resilience.circuitBreaker.openDuration": {
       "type": "number",
@@ -812,8 +845,8 @@
       },
       "readOnly": false,
       "isBasic": false,
-      "category": "display",
-      "order": 60
+      "category": "performance",
+      "order": 430
     },
     "resilience.healthCheck.enabled": {
       "type": "boolean",
@@ -822,8 +855,8 @@
       "description": "Enable periodic health checks (P2 - MEDIUM: disabled until Phase 10.8)",
       "readOnly": false,
       "isBasic": false,
-      "category": "general",
-      "order": 190
+      "category": "performance",
+      "order": 500
     },
     "resilience.healthCheck.endpoint": {
       "type": "string",
@@ -833,7 +866,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "network",
-      "order": 190
+      "order": 70
     },
     "resilience.healthCheck.interval": {
       "type": "number",
@@ -847,7 +880,7 @@
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
-      "order": 640
+      "order": 510
     }
   }
 }

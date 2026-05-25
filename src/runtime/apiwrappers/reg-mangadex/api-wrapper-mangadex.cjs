@@ -47,6 +47,30 @@ function formatError(error, context) {
 }
 
 /**
+ * @param {string} html
+ * @returns {string}
+ */
+function extractHtmlErrorMessage(html) {
+  if (typeof html !== 'string') {
+    return 'HTML error response';
+  }
+
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (titleMatch && typeof titleMatch[1] === 'string' && titleMatch[1].trim()) {
+    return titleMatch[1].trim();
+  }
+
+  const bodyText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return bodyText ? bodyText.slice(0, 180) : 'HTML error response';
+}
+
+/**
  * @returns {TrackerHttpClientLike}
  */
 function createFallbackHttpClient() {
@@ -134,7 +158,7 @@ function createInMemoryCacheAdapter() {
  * @param {string[]} candidateTitles
  * @returns {{ hasExactMatch: boolean, bestSimilarity: number }}
  */
-function calculateTitleSimilarity(expectedTitles, candidateTitles) {
+function calculateTitleSimilarity(expectedTitles, candidateTitles, containmentScore = 0.85) {
   let hasExactMatch = false;
   let bestSimilarity = 0;
 
@@ -166,7 +190,7 @@ function calculateTitleSimilarity(expectedTitles, candidateTitles) {
 
       let similarity = 0;
       if (candidateSlug.includes(expectedSlug) || expectedSlug.includes(candidateSlug)) {
-        similarity = 0.85;
+        similarity = containmentScore;
       } else {
         const expectedTokens = expectedSlug.split('-').filter(Boolean);
         const candidateTokens = candidateSlug.split('-').filter(Boolean);
@@ -248,13 +272,13 @@ class MangaDexAPIWrapper {
       ? providedCacheAdapter
       : createInMemoryCacheAdapter();
 
-    this._setupHttpInterceptor();
+    this._setupAxiosInterceptor();
   }
 
   /**
    * @returns {void}
    */
-  _setupHttpInterceptor() {
+  _setupAxiosInterceptor() {
     const responseInterceptors = this.httpClient
       && this.httpClient.interceptors
       && this.httpClient.interceptors.response
@@ -287,7 +311,9 @@ class MangaDexAPIWrapper {
           return Promise.reject(error);
         }
 
-        const cleanError = new Error('MangaDex backend infrastructure error: HTML response from upstream');
+        const cleanError = new Error(
+          `MangaDex backend infrastructure error: ${extractHtmlErrorMessage(typeof responseData === 'string' ? responseData : '')}`,
+        );
         cleanError.name = 'MangaDexBackendError';
         // @ts-ignore runtime compatibility field.
         cleanError.statusCode = typeof response.status === 'number' ? response.status : null;
@@ -357,6 +383,13 @@ class MangaDexAPIWrapper {
   }
 
   /**
+   * @returns {string}
+   */
+  static get serviceName() {
+    return SERVICE_NAME;
+  }
+
+  /**
    * @returns {Promise<TrackerCredentials | null>}
    */
   async getCredentials() {
@@ -376,6 +409,19 @@ class MangaDexAPIWrapper {
 
     this.credentials = { ...credentials };
     return { ...this.credentials };
+  }
+
+  /**
+   * @param {TrackerCredentials} credentials
+   * @returns {Promise<boolean>}
+   */
+  async testCredentials(credentials) {
+    try {
+      const token = await this._fetchNewToken(credentials, { forceRefresh: true });
+      return token && typeof token.access_token === 'string' && token.access_token.length > 0;
+    } catch (error) {
+      return false;
+    }
   }
 
   /**
@@ -1233,6 +1279,8 @@ class MangaDexAPIWrapper {
 
     return {
       status: statusMap[status] || 'READING',
+      chapter: null,
+      volume: null,
     };
   }
 
@@ -1323,7 +1371,7 @@ class MangaDexAPIWrapper {
     });
 
     if (!status || typeof status !== 'string') {
-      return;
+      return { success: true, mode: 'subscribed', listId: null };
     }
 
     const map = {
@@ -1346,6 +1394,8 @@ class MangaDexAPIWrapper {
     if (this.cacheAdapter) {
       await this.cacheAdapter.setValue(`mangadex_readingStatus_${seriesId}`, mappedStatus, 60 * 60);
     }
+
+    return { success: true, mode: 'subscribed', listId: null };
   }
 
   /**
@@ -1551,6 +1601,7 @@ class MangaDexAPIWrapper {
     const cacheKey = `mangadex_downloadCover_${mangaId}_${fileName}`;
     const cachedBase64 = this.cacheAdapter ? await this.cacheAdapter.getValue(cacheKey) : null;
     if (cachedBase64) {
+      await fs.mkdir(path.dirname(savePath), { recursive: true });
       await fs.writeFile(savePath, Buffer.from(cachedBase64, 'base64'));
       return true;
     }
@@ -1577,6 +1628,7 @@ class MangaDexAPIWrapper {
         return false;
       }
 
+      await fs.mkdir(path.dirname(savePath), { recursive: true });
       await fs.writeFile(savePath, buffer);
       if (this.cacheAdapter) {
         await this.cacheAdapter.setValue(cacheKey, buffer.toString('base64'), 24 * 60 * 60);
@@ -1708,10 +1760,15 @@ class MangaDexAPIWrapper {
       return null;
     }
 
-    const stopOnExact = !!(options && options.stopOnExact);
+    const exactMatchPolicyRaw = this._resolveSettingValue('search.exactMatchPolicy');
+    const stopOnExact = exactMatchPolicyRaw === 'highestScore' ? false : !!(options && options.stopOnExact);
+    const candidateLimitRaw = this._resolveSettingValue('search.candidateLimit');
+    const candidateLimit = typeof candidateLimitRaw === 'number' && Number.isFinite(candidateLimitRaw) && candidateLimitRaw > 0
+      ? Math.trunc(candidateLimitRaw)
+      : 5;
     const limit = Number.isFinite(options?.limit) && options.limit > 0
       ? Math.trunc(options.limit)
-      : 5;
+      : candidateLimit;
 
     /** @type {{
      *  title: string,
@@ -1817,6 +1874,18 @@ class MangaDexAPIWrapper {
    * @returns {Array<{ row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number }>}
    */
   _rankSearchRows(rows, targetTitles) {
+    const fuzzyThresholdRaw = this._resolveSettingValue('search.fuzzyThreshold');
+    const fuzzyThreshold = typeof fuzzyThresholdRaw === 'number' && Number.isFinite(fuzzyThresholdRaw) && fuzzyThresholdRaw > 0
+      ? fuzzyThresholdRaw
+      : 0.60;
+    const containmentScoreRaw = this._resolveSettingValue('search.containmentScore');
+    const containmentScore = typeof containmentScoreRaw === 'number' && Number.isFinite(containmentScoreRaw)
+      ? containmentScoreRaw
+      : 0.85;
+    const candidateLimitRaw = this._resolveSettingValue('search.candidateLimit');
+    const candidateLimit = typeof candidateLimitRaw === 'number' && Number.isFinite(candidateLimitRaw) && candidateLimitRaw > 0
+      ? Math.trunc(candidateLimitRaw)
+      : 5;
     /** @type {Array<{ row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number }>} */
     const exactRows = [];
     /** @type {Array<{ row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number }>} */
@@ -1824,13 +1893,13 @@ class MangaDexAPIWrapper {
 
     rows.forEach((row, index) => {
       const candidateTitles = this._collectCandidateTitles(row);
-      const similarity = calculateTitleSimilarity(targetTitles, candidateTitles);
+      const similarity = calculateTitleSimilarity(targetTitles, candidateTitles, containmentScore);
       if (similarity.hasExactMatch) {
         exactRows.push({ row, matchType: 'exact', similarity: 1, index });
         return;
       }
 
-      if (similarity.bestSimilarity >= 0.6) {
+      if (similarity.bestSimilarity >= fuzzyThreshold) {
         fuzzyRows.push({ row, matchType: 'fuzzy', similarity: similarity.bestSimilarity, index });
       }
     });
@@ -1844,7 +1913,7 @@ class MangaDexAPIWrapper {
       return a.index - b.index;
     });
 
-    return prioritized.slice(0, 5);
+    return prioritized.slice(0, candidateLimit);
   }
 
   /**
@@ -1972,6 +2041,6 @@ class MangaDexAPIWrapper {
   }
 }
 
-MangaDexAPIWrapper.serviceName = SERVICE_NAME;
+
 
 module.exports = MangaDexAPIWrapper;

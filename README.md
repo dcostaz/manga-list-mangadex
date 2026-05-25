@@ -8,6 +8,8 @@ Runtime tracker add-on package source for MangaDex.
 
 This repository builds a runtime-installable zip add-on for the manga-list app, compatible with the app's `TrackerPackageLoader`.
 
+Tracker-specific settings reference: [docs/settings.md](docs/settings.md)
+
 Latest runtime zip download (GitHub release asset):
 
 https://github.com/dcostaz/manga-list-mangadex/releases/download/runtime-latest/manga-list-mangadex-runtime.zip
