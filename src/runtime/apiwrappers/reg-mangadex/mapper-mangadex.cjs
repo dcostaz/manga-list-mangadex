@@ -1,13 +1,13 @@
 'use strict';
 
 const path = require('path');
-const { TRACKER_DTO_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'trackerdtocontract.cjs'));
+const { PLUGIN_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'plugindtocontract.cjs'));
 
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexRawSearchResponse} MangaDexRawSearchResponse */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexRawEntityResponse} MangaDexRawEntityResponse */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexSeriesDetailDto} MangaDexSeriesDetailDto */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexStatusDto} MangaDexStatusDto */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexCoverMetadataDto} MangaDexCoverMetadataDto */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexRawSearchResponse} MangaDexRawSearchResponse */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexRawEntityResponse} MangaDexRawEntityResponse */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexSeriesDetailDto} MangaDexSeriesDetailDto */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexStatusDto} MangaDexStatusDto */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexCoverMetadataDto} MangaDexCoverMetadataDto */
 
 class MangaDexTrackerMapper {
   /**
@@ -15,7 +15,7 @@ class MangaDexTrackerMapper {
    */
   constructor(initContext = null) {
     this.trackerId = 'mangadex';
-    this.dtoContractVersion = TRACKER_DTO_CONTRACT_VERSION;
+    this.dtoContractVersion = PLUGIN_CONTRACT_VERSION;
     this.initContext = initContext;
   }
 

@@ -15,23 +15,28 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
-function createMockCacheAdapter() {
+function createMockContext(initialData) {
   const hooks = {
-    data: new Map(),
+    data: new Map(Object.entries(initialData || {})),
     deletedKeys: [],
   };
 
   return {
-    cacheAdapter: {
-      async getValue(key) {
-        return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+    context: {
+      utils: {
+        sanitizeForSearch: (text) => (typeof text === 'string' ? text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : ''),
       },
-      async setValue(key, value) {
-        hooks.data.set(key, value);
-      },
-      async deleteValue(key) {
-        hooks.deletedKeys.push(key);
-        hooks.data.delete(key);
+      cache: {
+        async getValue(key) {
+          return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+        },
+        async setValue(key, value) {
+          hooks.data.set(key, value);
+        },
+        async deleteValue(key) {
+          hooks.deletedKeys.push(key);
+          hooks.data.delete(key);
+        },
       },
     },
     hooks,
@@ -75,7 +80,7 @@ function createMockHttpClient() {
   return { client, hooks };
 }
 
-async function createWrapper(httpClient, cacheAdapter) {
+async function createWrapper(httpClient, context) {
   const wrapper = await MangaDexAPIWrapper.init({
     serviceSettings: {
       'api.authUrl': 'https://auth.mangadex.org/realms/mangadex/protocol/openid-connect',
@@ -87,7 +92,7 @@ async function createWrapper(httpClient, cacheAdapter) {
       'api.endpoints.status.template': '${baseUrl}/manga/${id}/status',
     },
     httpClient,
-    cacheAdapter,
+    context,
   });
 
   await wrapper.setCredentials({
@@ -101,7 +106,7 @@ async function createWrapper(httpClient, cacheAdapter) {
 }
 
 test('read flow - searchTrackersRaw maps MangaDex rows to mapper payload shape', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -125,7 +130,7 @@ test('read flow - searchTrackersRaw maps MangaDex rows to mapper payload shape',
     },
   });
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const raw = await wrapper.searchTrackersRaw({ title: 'Solo Leveling' }, { useCache: false });
 
   assert.equal(raw.trackerId, 'mangadex');
@@ -137,7 +142,7 @@ test('read flow - searchTrackersRaw maps MangaDex rows to mapper payload shape',
 });
 
 test('read flow - searchTrackersRaw resolves coverUrl from MangaDex covers endpoint', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -181,7 +186,7 @@ test('read flow - searchTrackersRaw resolves coverUrl from MangaDex covers endpo
     };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const raw = await wrapper.searchTrackersRaw({ title: 'The Shepherd Wizard' }, { useCache: false });
 
   assert.equal(raw.operation, 'searchTrackersRaw');
@@ -193,7 +198,7 @@ test('read flow - searchTrackersRaw resolves coverUrl from MangaDex covers endpo
 });
 
 test('read flow - getSeriesByIdRaw returns compact id and title payload', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -220,7 +225,7 @@ test('read flow - getSeriesByIdRaw returns compact id and title payload', async 
     return { status: 200, data: { data: [] } };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const raw = await wrapper.getSeriesByIdRaw('series-123', false);
 
   assert.equal(raw.payload.id, 'series-123');
@@ -228,7 +233,7 @@ test('read flow - getSeriesByIdRaw returns compact id and title payload', async 
 });
 
 test('read flow - getReadingStatus returns null for 404 responses', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -246,19 +251,19 @@ test('read flow - getReadingStatus returns null for 404 responses', async () => 
     return { status: 200, data: {} };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const status = await wrapper.getReadingStatus('series-1', false);
 
   assert.equal(status, null);
 });
 
 test('read flow - getReadingStatus uses cache when available', async () => {
-  const { cacheAdapter, hooks: cacheHooks } = createMockCacheAdapter();
+  const { context, hooks: cacheHooks } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   cacheHooks.data.set('mangadex_readingStatus_series-cached', 'reading');
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const status = await wrapper.getReadingStatus('series-cached', true);
 
   assert.equal(status, 'reading');
@@ -266,7 +271,7 @@ test('read flow - getReadingStatus uses cache when available', async () => {
 });
 
 test('read flow - getUserProgressRaw returns normalized payload', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -278,7 +283,7 @@ test('read flow - getUserProgressRaw returns normalized payload', async () => {
     data: { status: 'completed' },
   });
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const raw = await wrapper.getUserProgressRaw('series-42');
 
   assert.equal(raw.operation, 'getUserProgressRaw');

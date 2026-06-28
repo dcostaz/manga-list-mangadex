@@ -17,21 +17,26 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
-function createMockCacheAdapter() {
+function createMockContext(initialData) {
   const hooks = {
-    data: new Map(),
+    data: new Map(Object.entries(initialData || {})),
   };
 
   return {
-    cacheAdapter: {
-      async getValue(key) {
-        return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+    context: {
+      utils: {
+        sanitizeForSearch: (text) => (typeof text === 'string' ? text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : ''),
       },
-      async setValue(key, value) {
-        hooks.data.set(key, value);
-      },
-      async deleteValue(key) {
-        hooks.data.delete(key);
+      cache: {
+        async getValue(key) {
+          return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+        },
+        async setValue(key, value) {
+          hooks.data.set(key, value);
+        },
+        async deleteValue(key) {
+          hooks.data.delete(key);
+        },
       },
     },
     hooks,
@@ -75,7 +80,7 @@ function createMockHttpClient() {
   return { client, hooks };
 }
 
-async function createWrapper(httpClient, cacheAdapter) {
+async function createWrapper(httpClient, context) {
   const wrapper = await MangaDexAPIWrapper.init({
     serviceSettings: {
       'api.authUrl': 'https://auth.mangadex.org/realms/mangadex/protocol/openid-connect',
@@ -86,7 +91,7 @@ async function createWrapper(httpClient, cacheAdapter) {
       'api.endpoints.cover.template': '${baseUrl}/cover',
     },
     httpClient,
-    cacheAdapter,
+    context,
   });
 
   await wrapper.setCredentials({
@@ -125,8 +130,8 @@ function assertCoverSearchContract(cover) {
   assert.equal((cover.telemetry?.attempts || 0) >= 1, true);
 }
 
-test('search flow - searchTrackers prioritizes exact match over fuzzy match', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+test('search flow - search prioritizes exact match over fuzzy match', async () => {
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -202,8 +207,8 @@ test('search flow - searchTrackers prioritizes exact match over fuzzy match', as
     return { status: 200, data: { data: [] } };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
-  const matches = await wrapper.searchTrackers({ title: 'Solo Leveling' }, { useCache: false });
+  const wrapper = await createWrapper(client, context);
+  const matches = await wrapper.search('Solo Leveling', { useCache: false });
 
   assert.equal(matches.length >= 1, true);
   assert.equal(matches[0].trackerId, 'exact-1');
@@ -211,7 +216,7 @@ test('search flow - searchTrackers prioritizes exact match over fuzzy match', as
 });
 
 test('search flow - searchTrackersRaw prioritizes exact matches over fuzzy matches', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -247,7 +252,7 @@ test('search flow - searchTrackersRaw prioritizes exact matches over fuzzy match
     return { status: 200, data: {} };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const raw = await wrapper.searchTrackersRaw({ title: 'Solo Leveling' }, { useCache: false });
 
   assert.equal(raw.payload.data.length, 1);
@@ -257,7 +262,7 @@ test('search flow - searchTrackersRaw prioritizes exact matches over fuzzy match
 });
 
 test('search flow - searchTrackersRaw evaluates alias query after weak primary title results and returns exact alias snapshot', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -308,7 +313,7 @@ test('search flow - searchTrackersRaw evaluates alias query after weak primary t
     return { status: 200, data: { data: [] } };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const raw = await wrapper.searchTrackersRaw(
     {
       title: 'Bad Primary Title',
@@ -327,8 +332,8 @@ test('search flow - searchTrackersRaw evaluates alias query after weak primary t
   assert.equal(raw.payload.data[0]?.title, 'Alias Exact Title');
 });
 
-test('search flow - searchTrackers prefers highest-score title snapshot when no exact match exists', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+test('search flow - search prefers highest-score title snapshot when no exact match exists', async () => {
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -389,27 +394,21 @@ test('search flow - searchTrackers prefers highest-score title snapshot when no 
     return { status: 200, data: { data: [] } };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
-  const matches = await wrapper.searchTrackers(
-    {
-      title: 'Weak Primary',
-      aliases: ['Better Alias'],
-    },
-    { useCache: false },
-  );
+  const wrapper = await createWrapper(client, context);
+  const matches = await wrapper.search('Weak Primary', { useCache: false });
 
   const searchCalls = httpHooks.getCalls
     .filter((call) => String(call.url).endsWith('/manga'))
     .map((call) => call.config && call.config.params ? String(call.config.params.title || '') : '');
 
-  assert.deepEqual(searchCalls, ['Weak Primary', 'Better Alias']);
+  assert.deepEqual(searchCalls, ['Weak Primary']);
   assert.equal(matches.length, 1);
-  assert.equal(matches[0]?.trackerId, 'better-fuzzy');
+  assert.equal(matches[0]?.trackerId, 'weak-fuzzy');
   assert.equal(matches[0]?.matchType, 'fuzzy');
 });
 
 test('cover flow - searchCovers falls back to fuzzy match and normalizes dimensions', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -461,7 +460,7 @@ test('cover flow - searchCovers falls back to fuzzy match and normalizes dimensi
     return { status: 200, data: { data: [] } };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const covers = await wrapper.searchCovers({ title: 'Solo Leveling' }, { useCache: false });
 
   assert.equal(covers.length, 1);
@@ -473,7 +472,7 @@ test('cover flow - searchCovers falls back to fuzzy match and normalizes dimensi
 });
 
 test('cover flow - searchCovers emits progress events and sorts covers by volume', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -503,7 +502,7 @@ test('cover flow - searchCovers emits progress events and sorts covers by volume
     return { status: 200, data: {} };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const progressEvents = [];
   const covers = await wrapper.searchCovers(
     { title: 'Direct Tracker Cover' },
@@ -529,7 +528,7 @@ test('cover flow - searchCovers emits progress events and sorts covers by volume
 });
 
 test('cover flow - downloadCover writes file and reuses cache', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.getHandler = (url) => {
@@ -543,7 +542,7 @@ test('cover flow - downloadCover writes file and reuses cache', async () => {
     return { status: 200, data: {} };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mangadex-cover-wave5-'));
   const outputFile = path.join(tempDir, 'cover.bin');

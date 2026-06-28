@@ -15,7 +15,7 @@ const MangaDexTrackerMapper = require(path.join(
   'mapper-mangadex.cjs',
 ));
 const {
-  TRACKER_DTO_CONTRACT_VERSION,
+  PLUGIN_CONTRACT_VERSION,
 } = require(path.join(
   __dirname,
   '..',
@@ -23,13 +23,13 @@ const {
   'src',
   'runtime',
   'apiwrappers',
-  'trackerdtocontract.cjs',
+  'plugindtocontract.cjs',
 ));
 
 test('wave0 mapper contract - mapper identity and contract version are stable', () => {
   const mapper = new MangaDexTrackerMapper({ source: 'test' });
   assert.equal(mapper.trackerId, 'mangadex');
-  assert.equal(mapper.dtoContractVersion, TRACKER_DTO_CONTRACT_VERSION);
+  assert.equal(mapper.dtoContractVersion, PLUGIN_CONTRACT_VERSION);
 });
 
 test('wave0 mapper contract - toSearchResultDtos maps valid compact rows and drops invalid rows', () => {

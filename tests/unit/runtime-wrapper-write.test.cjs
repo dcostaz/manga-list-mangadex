@@ -15,23 +15,28 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
-function createMockCacheAdapter() {
+function createMockContext(initialData) {
   const hooks = {
-    data: new Map(),
+    data: new Map(Object.entries(initialData || {})),
     deletedKeys: [],
   };
 
   return {
-    cacheAdapter: {
-      async getValue(key) {
-        return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+    context: {
+      utils: {
+        sanitizeForSearch: (text) => (typeof text === 'string' ? text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : ''),
       },
-      async setValue(key, value) {
-        hooks.data.set(key, value);
-      },
-      async deleteValue(key) {
-        hooks.deletedKeys.push(key);
-        hooks.data.delete(key);
+      cache: {
+        async getValue(key) {
+          return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+        },
+        async setValue(key, value) {
+          hooks.data.set(key, value);
+        },
+        async deleteValue(key) {
+          hooks.deletedKeys.push(key);
+          hooks.data.delete(key);
+        },
       },
     },
     hooks,
@@ -75,7 +80,7 @@ function createMockHttpClient() {
   return { client, hooks };
 }
 
-async function createWrapper(httpClient, cacheAdapter) {
+async function createWrapper(httpClient, context) {
   const wrapper = await MangaDexAPIWrapper.init({
     serviceSettings: {
       'api.authUrl': 'https://auth.mangadex.org/realms/mangadex/protocol/openid-connect',
@@ -86,7 +91,7 @@ async function createWrapper(httpClient, cacheAdapter) {
       'api.endpoints.status.template': '${baseUrl}/manga/${id}/status',
     },
     httpClient,
-    cacheAdapter,
+    context,
   });
 
   await wrapper.setCredentials({
@@ -99,8 +104,8 @@ async function createWrapper(httpClient, cacheAdapter) {
   return wrapper;
 }
 
-test('write flow - subscribeToReadingList follows and maps status', async () => {
-  const { cacheAdapter, hooks: cacheHooks } = createMockCacheAdapter();
+test('write flow - subscribe follows and maps status', async () => {
+  const { context, hooks: cacheHooks } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = (url) => {
@@ -114,11 +119,8 @@ test('write flow - subscribeToReadingList follows and maps status', async () => 
     return { status: 200, data: {} };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
-  await wrapper.subscribeToReadingList({
-    seriesId: 'series-follow',
-    status: 'COMPLETED',
-  });
+  const wrapper = await createWrapper(client, context);
+  await wrapper.subscribe('series-follow', { readingStatus: 'COMPLETED' });
 
   assert.equal(httpHooks.postCalls.length, 3);
   assert.equal(httpHooks.postCalls[1].url, 'https://api.mangadex.org/manga/series-follow/follow');
@@ -127,8 +129,8 @@ test('write flow - subscribeToReadingList follows and maps status', async () => 
   assert.equal(cacheHooks.data.get('mangadex_readingStatus_series-follow'), 'completed');
 });
 
-test('write flow - setUserProgress returns success false when status missing', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+test('write flow - pushProgress returns success false when status missing', async () => {
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = () => ({
@@ -136,15 +138,15 @@ test('write flow - setUserProgress returns success false when status missing', a
     data: { access_token: 'write-access', refresh_token: 'write-refresh' },
   });
 
-  const wrapper = await createWrapper(client, cacheAdapter);
-  const result = await wrapper.setUserProgress('series-1', { chapter: 10 });
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.pushProgress('series-1', { chapter: 10 });
 
   assert.equal(result.success, false);
   assert.equal(typeof result.error, 'string');
 });
 
 test('write flow - updateStatus returns response status and updates cache', async () => {
-  const { cacheAdapter, hooks: cacheHooks } = createMockCacheAdapter();
+  const { context, hooks: cacheHooks } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = (url) => {
@@ -161,7 +163,7 @@ test('write flow - updateStatus returns response status and updates cache', asyn
     };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const result = await wrapper.updateStatus('series-status', 'completed');
 
   assert.equal(result.status, 202);
@@ -170,7 +172,7 @@ test('write flow - updateStatus returns response status and updates cache', asyn
 });
 
 test('write flow - unfollowManga deletes cached status key', async () => {
-  const { cacheAdapter, hooks: cacheHooks } = createMockCacheAdapter();
+  const { context, hooks: cacheHooks } = createMockContext({ 'mangadex_readingStatus_series-unfollow': 'reading' });
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = (url) => {
@@ -184,9 +186,7 @@ test('write flow - unfollowManga deletes cached status key', async () => {
     return { status: 200, data: {} };
   };
 
-  cacheHooks.data.set('mangadex_readingStatus_series-unfollow', 'reading');
-
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   await wrapper.unfollowManga('series-unfollow');
 
   assert.equal(httpHooks.deleteCalls.length, 1);
@@ -195,8 +195,8 @@ test('write flow - unfollowManga deletes cached status key', async () => {
   assert.equal(cacheHooks.data.has('mangadex_readingStatus_series-unfollow'), false);
 });
 
-test('write flow - setUserProgress with status delegates to status update and succeeds', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+test('write flow - pushProgress with status delegates to status update and succeeds', async () => {
+  const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = (url) => {
@@ -213,8 +213,8 @@ test('write flow - setUserProgress with status delegates to status update and su
     };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
-  const result = await wrapper.setUserProgress('series-progress', { status: 'READING', chapter: 101 });
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.pushProgress('series-progress', { status: 'READING', chapter: 101 });
 
   assert.equal(result.success, true);
   assert.equal(typeof result.message, 'string');
