@@ -1,0 +1,23 @@
+{
+  "pluginName": "mangadex",
+  "pluginType": ["tracker", "adapter"],
+  "pluginContractVersion": "1.0.0",
+  "hostApiVersion": "1.0.0",
+  "iconPath": "images/mangadex-icon.svg",
+  "capabilities": ["tracker.search", "tracker.sync", "tracker.cover", "adapter.enrich"],
+  "entrypoints": {
+    "pluginModule": "apiwrappers/reg-mangadex/plugin-module.cjs",
+    "settingsFile": "apiwrappers/reg-mangadex/mangadex-api-settings.json"
+  },
+  "syncOptions": {
+    "statusVocabulary": {
+      "READING":      "reading",
+      "COMPLETED":    "completed",
+      "PLAN_TO_READ": "plan_to_read",
+      "ON_HOLD":      "paused",
+      "DROPPED":      "dropped",
+      "RE_READING":   "reading"
+    },
+    "supportedActions": []
+  }
+}

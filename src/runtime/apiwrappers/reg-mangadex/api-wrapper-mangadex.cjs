@@ -6,15 +6,14 @@ const MangaDexAPISettings = require(path.join(__dirname, 'api-settings-mangadex.
 
 const SERVICE_NAME = 'mangadex';
 
-/** @typedef {import('../../../../types/trackertypedefs').TrackerServiceSettings} TrackerServiceSettings */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexAPIWrapperCtorParams} MangaDexAPIWrapperCtorParams */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexAPIWrapperInitOptions} MangaDexAPIWrapperInitOptions */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexRawSearchResponse} MangaDexRawSearchResponse */
-/** @typedef {import('../../../../types/trackertypedefs').MangaDexRawEntityResponse} MangaDexRawEntityResponse */
-/** @typedef {import('../../../../types/trackertypedefs').TrackerHttpClientLike} TrackerHttpClientLike */
-/** @typedef {import('../../../../types/trackertypedefs').TrackerCredentials} TrackerCredentials */
-/** @typedef {import('../../../../types/trackertypedefs').CredentialsRequiredCallback} CredentialsRequiredCallback */
-/** @typedef {import('../../../../types/trackertypedefs').TrackerCacheAdapterLike} TrackerCacheAdapterLike */
+/** @typedef {import('../../../../types/plugintypedefs').PluginServiceSettings} PluginServiceSettings */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexAPIWrapperCtorParams} MangaDexAPIWrapperCtorParams */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexAPIWrapperInitOptions} MangaDexAPIWrapperInitOptions */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexRawSearchResponse} MangaDexRawSearchResponse */
+/** @typedef {import('../../../../types/plugintypedefs').MangaDexRawEntityResponse} MangaDexRawEntityResponse */
+/** @typedef {import('../../../../types/plugintypedefs').TrackerHttpClientLike} TrackerHttpClientLike */
+/** @typedef {import('../../../../types/plugintypedefs').PluginCredential} PluginCredential */
+/** @typedef {import('../../../../types/plugincontexttypedefs').PluginContextLike} PluginContextLike */
 
 /**
  * @param {string} value
@@ -116,44 +115,6 @@ function createDefaultHttpClient() {
 }
 
 /**
- * @returns {TrackerCacheAdapterLike}
- */
-function createInMemoryCacheAdapter() {
-  /** @type {Map<string, { value: string, expiresAt: number | null }>} */
-  const cache = new Map();
-
-  return {
-    async getValue(key) {
-      if (!cache.has(key)) {
-        return null;
-      }
-
-      const entry = cache.get(key);
-      if (!entry) {
-        return null;
-      }
-
-      if (typeof entry.expiresAt === 'number' && Date.now() > entry.expiresAt) {
-        cache.delete(key);
-        return null;
-      }
-
-      return entry.value;
-    },
-    async setValue(key, value, ttlSeconds) {
-      const ttl = typeof ttlSeconds === 'number' && Number.isFinite(ttlSeconds) && ttlSeconds > 0
-        ? ttlSeconds
-        : null;
-      const expiresAt = ttl ? Date.now() + (ttl * 1000) : null;
-      cache.set(key, { value, expiresAt });
-    },
-    async deleteValue(key) {
-      cache.delete(key);
-    },
-  };
-}
-
-/**
  * @param {string[]} expectedTitles
  * @param {string[]} candidateTitles
  * @returns {{ hasExactMatch: boolean, bestSimilarity: number }}
@@ -239,22 +200,19 @@ function getHttpStatus(error) {
 
 class MangaDexAPIWrapper {
   /**
-  * @param {MangaDexAPIWrapperCtorParams} [params]
+   * @param {object} [params]
    * @param {MangaDexAPISettings | null} [params.apiSettings]
-  * @param {TrackerServiceSettings} [params.serviceSettings]
+   * @param {PluginServiceSettings} [params.serviceSettings]
+   * @param {TrackerHttpClientLike | null} [params.httpClient]
+   * @param {PluginContextLike | null} [params.context]
    */
   constructor(params = {}) {
     const apiSettings = params && typeof params === 'object' ? params.apiSettings : null;
     const serviceSettings = params && typeof params === 'object' ? params.serviceSettings : null;
-    const onCredentialsRequired = params && typeof params === 'object'
-      ? params.onCredentialsRequired
-      : null;
     const providedHttpClient = params && typeof params === 'object'
       ? params.httpClient
       : null;
-    const providedCacheAdapter = params && typeof params === 'object'
-      ? params.cacheAdapter
-      : null;
+    const providedContext = params && typeof params === 'object' ? params.context : null;
 
     this.settings = serviceSettings && typeof serviceSettings === 'object' ? serviceSettings : {};
     this.apiSettings = apiSettings instanceof MangaDexAPISettings ? apiSettings : null;
@@ -262,18 +220,62 @@ class MangaDexAPIWrapper {
     this._defaultTokenName = 'access_token';
     this.bearerToken = null;
     this.credentials = null;
-    this.onCredentialsRequired = typeof onCredentialsRequired === 'function'
-      ? onCredentialsRequired
-      : async () => null;
+    this._context = providedContext && typeof providedContext === 'object' ? providedContext : null;
+    this._initialized = false;
     this.httpClient = providedHttpClient && typeof providedHttpClient === 'object'
       ? providedHttpClient
       : createDefaultHttpClient();
-    this.cacheAdapter = providedCacheAdapter && typeof providedCacheAdapter === 'object'
-      ? providedCacheAdapter
-      : createInMemoryCacheAdapter();
 
     this._setupAxiosInterceptor();
   }
+
+  // ---------------------------------------------------------------------------
+  // PluginAPILike lifecycle
+  // ---------------------------------------------------------------------------
+
+  static get pluginName() { return SERVICE_NAME; }
+  get pluginName() { return SERVICE_NAME; }
+  get pluginType() { return Object.freeze(['tracker', 'adapter']); }
+  get capabilities() { return Object.freeze(['tracker.search', 'tracker.sync', 'tracker.cover', 'adapter.enrich']); }
+  get contractVersion() {
+    const { PLUGIN_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'plugindtocontract.cjs'));
+    return PLUGIN_CONTRACT_VERSION;
+  }
+
+  async initialize() {
+    this._initialized = true;
+    return { status: 'ok' };
+  }
+
+  getStatus() {
+    return { status: this._initialized ? 'ok' : 'initializing' };
+  }
+
+  /**
+   * @param {PluginCredential} current
+   * @returns {Promise<PluginCredential>}
+   */
+  async refreshCredentials(current) {
+    if (!current || typeof current !== 'object') {
+      throw new Error('(refreshCredentials) current credential is required');
+    }
+    const credentials = { username: current.username || '', password: current.password || '' };
+    const tokenData = await this._fetchNewToken(credentials, { forceRefresh: true });
+    const accessToken = await this._extractToken(tokenData);
+    const refreshKey = this._getTokenCacheKey('refresh_token');
+    let refreshToken = current.refreshToken || null;
+    if (this._context && this._context.cache) {
+      const cached = await this._context.cache.getValue(refreshKey);
+      if (cached) refreshToken = cached;
+    }
+    return {
+      token: accessToken || '',
+      refreshToken: refreshToken || null,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
 
   /**
    * @returns {void}
@@ -328,9 +330,12 @@ class MangaDexAPIWrapper {
   }
 
   /**
-    * @param {MangaDexAPIWrapperInitOptions} [options]
+   * @param {object} [options]
    * @param {MangaDexAPISettings | null} [options.apiSettings]
-    * @param {TrackerServiceSettings} [options.serviceSettings]
+   * @param {PluginServiceSettings} [options.serviceSettings]
+   * @param {TrackerHttpClientLike | null} [options.httpClient]
+   * @param {Function | null} [options.httpClientFactory]
+   * @param {PluginContextLike | null} [options.context]
    * @returns {Promise<MangaDexAPIWrapper>}
    */
   static async init(options = {}) {
@@ -354,9 +359,6 @@ class MangaDexAPIWrapper {
     const serviceSettingsFromApiSettings = resolvedApiSettings ? resolvedApiSettings.toLegacyFormat() : null;
     const serviceSettings = explicitServiceSettings || serviceSettingsFromApiSettings || {};
 
-    const onCredentialsRequired = options && typeof options === 'object' && typeof options.onCredentialsRequired === 'function'
-      ? options.onCredentialsRequired
-      : async () => null;
     const directHttpClient = options && typeof options === 'object' && options.httpClient && typeof options.httpClient === 'object'
       ? options.httpClient
       : null;
@@ -365,20 +367,15 @@ class MangaDexAPIWrapper {
       : null;
     const httpClientFromFactory = !directHttpClient && httpClientFactory ? httpClientFactory() : null;
 
-    const directCacheAdapter = options && typeof options === 'object' && options.cacheAdapter && typeof options.cacheAdapter === 'object'
-      ? options.cacheAdapter
+    const context = options && typeof options === 'object' && options.context && typeof options.context === 'object'
+      ? options.context
       : null;
-    const cacheAdapterFactory = options && typeof options === 'object' && typeof options.cacheAdapterFactory === 'function'
-      ? options.cacheAdapterFactory
-      : null;
-    const cacheAdapterFromFactory = !directCacheAdapter && cacheAdapterFactory ? cacheAdapterFactory() : null;
 
     return new MangaDexAPIWrapper({
       apiSettings: resolvedApiSettings,
       serviceSettings,
-      onCredentialsRequired,
       httpClient: directHttpClient || httpClientFromFactory || null,
-      cacheAdapter: directCacheAdapter || cacheAdapterFromFactory || null,
+      context,
     });
   }
 
@@ -390,7 +387,7 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @returns {Promise<TrackerCredentials | null>}
+   * @returns {Promise<PluginCredential | null>}
    */
   async getCredentials() {
     return this.credentials && typeof this.credentials === 'object'
@@ -399,8 +396,8 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {TrackerCredentials} credentials
-   * @returns {Promise<TrackerCredentials>}
+   * @param {PluginCredential} credentials
+   * @returns {Promise<PluginCredential>}
    */
   async setCredentials(credentials) {
     if (!credentials || typeof credentials !== 'object') {
@@ -412,7 +409,7 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {TrackerCredentials} credentials
+   * @param {PluginCredential} credentials
    * @returns {Promise<boolean>}
    */
   async testCredentials(credentials) {
@@ -495,11 +492,11 @@ class MangaDexAPIWrapper {
    * @returns {Promise<unknown | null>}
    */
   async _getJSONCacheValue(key) {
-    if (!this.cacheAdapter || typeof this.cacheAdapter.getValue !== 'function') {
+    if (!this._context || !this._context.cache || typeof this._context.cache.getValue !== 'function') {
       return null;
     }
 
-    const raw = await this.cacheAdapter.getValue(key);
+    const raw = await this._context.cache.getValue(key);
     if (!raw) {
       return null;
     }
@@ -518,11 +515,11 @@ class MangaDexAPIWrapper {
    * @returns {Promise<void>}
    */
   async _setJSONCacheValue(key, value, ttlSeconds) {
-    if (!this.cacheAdapter || typeof this.cacheAdapter.setValue !== 'function') {
+    if (!this._context || !this._context.cache || typeof this._context.cache.setValue !== 'function') {
       return;
     }
 
-    await this.cacheAdapter.setValue(key, JSON.stringify(value), ttlSeconds);
+    await this._context.cache.setValue(key, JSON.stringify(value), ttlSeconds);
   }
 
   /**
@@ -535,8 +532,8 @@ class MangaDexAPIWrapper {
       return this.bearerToken;
     }
 
-    if (!forceRefresh && this.cacheAdapter) {
-      const cached = await this.cacheAdapter.getValue(accessKey);
+    if (!forceRefresh && (this._context && this._context.cache)) {
+      const cached = await this._context.cache.getValue(accessKey);
       if (cached) {
         this.bearerToken = cached;
         return cached;
@@ -544,20 +541,9 @@ class MangaDexAPIWrapper {
     }
 
     let credentials = await this.getCredentials();
-    if (!credentials && typeof this.onCredentialsRequired === 'function') {
-      const provided = await this.onCredentialsRequired({
-        serviceName: SERVICE_NAME,
-        settings: this.settings,
-      });
-
-      if (provided && typeof provided === 'object') {
-        await this.setCredentials(provided);
-        credentials = provided;
-      }
-    }
 
     if (!credentials) {
-      throw new Error('Credentials not found and callback did not provide credentials.');
+      throw new Error('Credentials not found.');
     }
 
     const tokenData = await this._fetchNewToken(credentials, { forceRefresh });
@@ -572,14 +558,14 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {TrackerCredentials} credentials
+   * @param {PluginCredential} credentials
    * @param {{ forceRefresh?: boolean }} [options]
    * @returns {Promise<Record<string, string>>}
    */
   async _fetchNewToken(credentials, options = {}) {
     const forceRefresh = options && typeof options === 'object' && options.forceRefresh === true;
     const refreshKey = this._getTokenCacheKey('refresh_token');
-    const cachedRefreshToken = forceRefresh ? null : await this.cacheAdapter.getValue(refreshKey);
+    const cachedRefreshToken = forceRefresh ? null : ((this._context && this._context.cache) ? await this._context.cache.getValue(refreshKey) : null);
     const useRefreshFlow = Boolean(cachedRefreshToken) && !forceRefresh;
 
     const endpoint = this._resolveEndpoint(
@@ -622,8 +608,8 @@ class MangaDexAPIWrapper {
       };
     } catch (error) {
       if (useRefreshFlow) {
-        if (this.cacheAdapter && typeof this.cacheAdapter.deleteValue === 'function') {
-          await this.cacheAdapter.deleteValue(refreshKey);
+        if ((this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
+          await this._context.cache.deleteValue(refreshKey);
         }
         return this._fetchNewToken(credentials, { forceRefresh: true });
       }
@@ -648,12 +634,12 @@ class MangaDexAPIWrapper {
    * @returns {Promise<void>}
    */
   async _cacheToken(tokenData) {
-    if (!tokenData || typeof tokenData !== 'object' || !this.cacheAdapter) {
+    if (!tokenData || typeof tokenData !== 'object' || !(this._context && this._context.cache)) {
       return;
     }
 
     if (typeof tokenData.access_token === 'string' && tokenData.access_token) {
-      await this.cacheAdapter.setValue(
+      await this._context.cache.setValue(
         this._getTokenCacheKey('access_token'),
         tokenData.access_token,
         this._getTokenTTL('access_token'),
@@ -662,7 +648,7 @@ class MangaDexAPIWrapper {
     }
 
     if (typeof tokenData.refresh_token === 'string' && tokenData.refresh_token) {
-      await this.cacheAdapter.setValue(
+      await this._context.cache.setValue(
         this._getTokenCacheKey('refresh_token'),
         tokenData.refresh_token,
         this._getTokenTTL('refresh_token'),
@@ -688,7 +674,7 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} query
-  * @returns {Promise<MangaDexRawSearchResponse>}
+   * @returns {Promise<MangaDexRawSearchResponse>}
    */
   async searchTrackersRaw(query, options = {}) {
     const useCache = !(options && typeof options === 'object' && options.useCache === false);
@@ -788,13 +774,13 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {Record<string, unknown> | string} searchable
-   * @param {{ useCache?: boolean, searchTitles?: string[] }} [options]
+   * @param {string} query
+   * @param {{ useCache?: boolean, searchTitles?: string[] }} [_options]
    * @returns {Promise<Array<Record<string, unknown>>>}
    */
-  async searchTrackers(searchable, options = {}) {
-    const useCache = !(options && typeof options === 'object' && options.useCache === false);
-    const targetTitles = this._buildTitleList(searchable, options);
+  async search(query, _options = {}) {
+    const useCache = !(_options && typeof _options === 'object' && _options.useCache === false);
+    const targetTitles = this._buildTitleList(typeof query === 'string' ? query : '', {});
 
     const bestSnapshot = await this._selectBestSearchSnapshot(targetTitles, {
       useCache,
@@ -829,7 +815,7 @@ class MangaDexAPIWrapper {
    * @returns {Promise<{ data: Array<Record<string, unknown>>, includes: Array<Record<string, unknown>> }>}
    */
   async searchManga(title, useCache = true, cacheMeta) {
-    const cacheKey = `mangadex_searchManga_${toSlug(title)}`;
+    const cacheKey = `mangadex_searchManga_${(this._context ? this._context.utils.sanitizeForSearch(title) : toSlug(title))}`;
     const meta = cacheMeta && typeof cacheMeta === 'object' ? cacheMeta : null;
 
     if (useCache) {
@@ -1081,6 +1067,7 @@ class MangaDexAPIWrapper {
     return {
       source: SERVICE_NAME,
       trackerId: typeof manga.id === 'string' ? manga.id : null,
+      pluginEntryId: typeof manga.id === 'string' ? manga.id : null,
       title: mainTitleValues.length > 0 ? String(mainTitleValues[0]) : '',
       alternativeTitles: altTitles,
       coverUrl,
@@ -1120,7 +1107,7 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} trackerId
-  * @returns {Promise<MangaDexRawEntityResponse>}
+   * @returns {Promise<MangaDexRawEntityResponse>}
    */
   async getSeriesByIdRaw(trackerId, useCache = true) {
     const result = await this.getMangaById(String(trackerId), useCache);
@@ -1189,7 +1176,7 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} trackerId
-  * @returns {Promise<MangaDexRawEntityResponse>}
+   * @returns {Promise<MangaDexRawEntityResponse>}
    */
   async getUserProgressRaw(trackerId) {
     const status = await this.getReadingStatus(trackerId, true);
@@ -1217,8 +1204,8 @@ class MangaDexAPIWrapper {
     }
 
     const cacheKey = `mangadex_readingStatus_${seriesId}`;
-    if (useCache && this.cacheAdapter) {
-      const cached = await this.cacheAdapter.getValue(cacheKey);
+    if (useCache && (this._context && this._context.cache)) {
+      const cached = await this._context.cache.getValue(cacheKey);
       if (cached) {
         return cached;
       }
@@ -1244,8 +1231,8 @@ class MangaDexAPIWrapper {
         ? response.data
         : {};
       const status = typeof responseData.status === 'string' ? responseData.status : null;
-      if (status && this.cacheAdapter) {
-        await this.cacheAdapter.setValue(cacheKey, status, 60 * 60);
+      if (status && (this._context && this._context.cache)) {
+        await this._context.cache.setValue(cacheKey, status, 60 * 60);
       }
 
       return status;
@@ -1259,11 +1246,11 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {string|number} seriesId
+   * @param {string|number} pluginEntryId
    * @returns {Promise<Record<string, unknown> | null>}
    */
-  async getUserProgress(seriesId) {
-    const status = await this.getReadingStatus(seriesId, true);
+  async pullProgress(pluginEntryId) {
+    const status = await this.getReadingStatus(pluginEntryId, true);
     if (!status) {
       return null;
     }
@@ -1310,8 +1297,8 @@ class MangaDexAPIWrapper {
       },
     });
 
-    if (this.cacheAdapter) {
-      await this.cacheAdapter.setValue(`mangadex_readingStatus_${trackerId}`, status, 60 * 60);
+    if (this._context && this._context.cache) {
+      await this._context.cache.setValue(`mangadex_readingStatus_${trackerId}`, status, 60 * 60);
     }
 
     return {
@@ -1339,15 +1326,20 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {{ seriesId: string | number, status?: string, chapter?: number, volume?: number, rating?: number }} subscriptionData
+   * @param {string} pluginEntryId
+   * @param {object | null} [context]
+   * @param {string | null} [context.readingStatus]
+   * @param {number} [context.chapter]
+   * @param {number} [context.volume]
+   * @param {number} [context.rating]
    * @returns {Promise<void>}
    */
-  async subscribeToReadingList(subscriptionData) {
-    const seriesId = subscriptionData && typeof subscriptionData === 'object' ? subscriptionData.seriesId : null;
-    const status = subscriptionData && typeof subscriptionData === 'object' ? subscriptionData.status : null;
+  async subscribe(pluginEntryId, context) {
+    const seriesId = pluginEntryId;
+    const status = context && context.readingStatus ? context.readingStatus : null;
 
     if (!seriesId) {
-      throw new Error('(subscribeToReadingList) seriesId is required');
+      throw new Error('(subscribe) pluginEntryId is required');
     }
 
     await this.getToken();
@@ -1359,11 +1351,11 @@ class MangaDexAPIWrapper {
       id: String(seriesId),
     });
     if (!followEndpoint || !statusEndpoint) {
-      throw new Error('(subscribeToReadingList) Missing follow or status endpoint config');
+      throw new Error('(subscribe) Missing follow or status endpoint config');
     }
 
     if (!this.httpClient || typeof this.httpClient.post !== 'function') {
-      throw new Error('(subscribeToReadingList) HTTP client post method is not configured');
+      throw new Error('(subscribe) HTTP client post method is not configured');
     }
 
     await this.httpClient.post(followEndpoint, {}, {
@@ -1391,21 +1383,21 @@ class MangaDexAPIWrapper {
       },
     });
 
-    if (this.cacheAdapter) {
-      await this.cacheAdapter.setValue(`mangadex_readingStatus_${seriesId}`, mappedStatus, 60 * 60);
+    if (this._context && this._context.cache) {
+      await this._context.cache.setValue(`mangadex_readingStatus_${seriesId}`, mappedStatus, 60 * 60);
     }
 
     return { success: true, mode: 'subscribed', listId: null };
   }
 
   /**
-   * @param {string|number} seriesId
+   * @param {string|number} pluginEntryId
    * @param {Record<string, unknown>} [progress]
    * @returns {Promise<Record<string, unknown>>}
    */
-  async setUserProgress(seriesId, progress = {}) {
-    if (!seriesId) {
-      throw new Error('(setUserProgress) seriesId is required');
+  async pushProgress(pluginEntryId, progress = {}) {
+    if (!pluginEntryId) {
+      throw new Error('(pushProgress) pluginEntryId is required');
     }
 
     if (!progress || typeof progress !== 'object' || typeof progress.status !== 'string') {
@@ -1432,7 +1424,7 @@ class MangaDexAPIWrapper {
       };
     }
 
-    await this.updateStatus(seriesId, mappedStatus);
+    await this.updateStatus(pluginEntryId, mappedStatus);
     return {
       success: true,
       updatedFields: ['status'],
@@ -1466,8 +1458,8 @@ class MangaDexAPIWrapper {
       headers: { Authorization: `Bearer ${this.bearerToken}` },
     });
 
-    if (this.cacheAdapter && typeof this.cacheAdapter.deleteValue === 'function') {
-      await this.cacheAdapter.deleteValue(`mangadex_readingStatus_${seriesId}`);
+    if ((this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
+      await this._context.cache.deleteValue(`mangadex_readingStatus_${seriesId}`);
     }
   }
 
@@ -1599,7 +1591,7 @@ class MangaDexAPIWrapper {
     }
 
     const cacheKey = `mangadex_downloadCover_${mangaId}_${fileName}`;
-    const cachedBase64 = this.cacheAdapter ? await this.cacheAdapter.getValue(cacheKey) : null;
+    const cachedBase64 = (this._context && this._context.cache) ? await this._context.cache.getValue(cacheKey) : null;
     if (cachedBase64) {
       await fs.mkdir(path.dirname(savePath), { recursive: true });
       await fs.writeFile(savePath, Buffer.from(cachedBase64, 'base64'));
@@ -1630,8 +1622,8 @@ class MangaDexAPIWrapper {
 
       await fs.mkdir(path.dirname(savePath), { recursive: true });
       await fs.writeFile(savePath, buffer);
-      if (this.cacheAdapter) {
-        await this.cacheAdapter.setValue(cacheKey, buffer.toString('base64'), 24 * 60 * 60);
+      if (this._context && this._context.cache) {
+        await this._context.cache.setValue(cacheKey, buffer.toString('base64'), 24 * 60 * 60);
       }
       return true;
     } catch (error) {
@@ -1646,9 +1638,9 @@ class MangaDexAPIWrapper {
    *  mangaTitle: string,
    *  canonicalUrl: string,
    *  fetchedAt: string,
-  *  telemetry: Record<string, unknown>,
-  *  matchType?: 'exact' | 'fuzzy',
-  *  score?: number,
+   *  telemetry: Record<string, unknown>,
+   *  matchType?: 'exact' | 'fuzzy',
+   *  score?: number,
    * }} context
    * @returns {Record<string, unknown>}
    */
@@ -1689,13 +1681,13 @@ class MangaDexAPIWrapper {
   /**
    * @param {string[]} titles
    * @param {boolean} useCache
-  * @returns {Promise<{
-  *  match: Record<string, unknown> | undefined,
-  *  attempts: number,
-  *  cacheHit: boolean,
-  *  matchType: 'exact' | 'fuzzy',
-  *  similarity: number,
-  * }>}
+   * @returns {Promise<{
+   *  match: Record<string, unknown> | undefined,
+   *  attempts: number,
+   *  cacheHit: boolean,
+   *  matchType: 'exact' | 'fuzzy',
+   *  similarity: number,
+   * }>}
    */
   async _findExactMatch(titles, useCache) {
     const bestSnapshot = await this._selectBestSearchSnapshot(titles, {
@@ -2039,8 +2031,77 @@ class MangaDexAPIWrapper {
 
     return `https://mangadex.org/title/${trackerId}`;
   }
+
+  // ---------------------------------------------------------------------------
+  // adapter.enrich methods
+  // ---------------------------------------------------------------------------
+
+  /**
+   * @param {string} title
+   * @param {object} [_options]
+   * @returns {Promise<Array<{ pluginEntryId: string, title: string, altTitles: string[], confidence: number }>>}
+   */
+  async findMatches(title, _options) {
+    const q = typeof title === 'string' ? title : '';
+    if (!q.trim()) return [];
+    try {
+      const results = await this.search(q);
+      return results.slice(0, 5).map((r) => ({
+        pluginEntryId: String(r.trackerId || r.pluginEntryId || ''),
+        title: typeof r.title === 'string' ? r.title : q,
+        altTitles: Array.isArray(r.alternativeTitles) ? r.alternativeTitles : [],
+        confidence: typeof r.confidence === 'number' ? r.confidence : 0,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * @param {string} pluginEntryId
+   * @returns {Promise<{ pluginEntryId: string, syncedAt: string }>}
+   */
+  async buildLinkContribution(pluginEntryId) {
+    return {
+      pluginEntryId: String(pluginEntryId),
+      syncedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * @param {Record<string, unknown>} localTrackerEntry
+   * @returns {Promise<{ pluginEntryId: string, syncedAt: string, displayTitle?: string, description?: string }>}
+   */
+  async syncEnrichment(localTrackerEntry) {
+    const pluginEntryId = localTrackerEntry && (localTrackerEntry.pluginEntryId || localTrackerEntry.trackerId);
+    if (!pluginEntryId) {
+      return { pluginEntryId: '', syncedAt: new Date().toISOString() };
+    }
+    try {
+      const detail = await this.getMangaById(String(pluginEntryId));
+      const detailData = detail && typeof detail === 'object' && detail.data && typeof detail.data === 'object'
+        ? detail.data
+        : null;
+      const attributes = detailData && detailData.attributes && typeof detailData.attributes === 'object'
+        ? detailData.attributes
+        : null;
+      const titleValues = attributes && attributes.title && typeof attributes.title === 'object'
+        ? Object.values(attributes.title).filter((e) => typeof e === 'string' && e.trim())
+        : [];
+      const displayTitle = titleValues.length > 0 ? String(titleValues[0]) : undefined;
+      const description = attributes && attributes.description && typeof attributes.description === 'object' && typeof attributes.description.en === 'string'
+        ? attributes.description.en
+        : undefined;
+      return {
+        pluginEntryId: String(pluginEntryId),
+        syncedAt: new Date().toISOString(),
+        ...(displayTitle !== undefined ? { displayTitle } : {}),
+        ...(description !== undefined ? { description } : {}),
+      };
+    } catch (error) {
+      return { pluginEntryId: String(pluginEntryId), syncedAt: new Date().toISOString() };
+    }
+  }
 }
-
-
 
 module.exports = MangaDexAPIWrapper;

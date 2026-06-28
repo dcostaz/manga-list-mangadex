@@ -15,25 +15,30 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
-function createMockCacheAdapter() {
+function createMockContext(initialData) {
   const hooks = {
-    data: new Map(),
+    data: new Map(Object.entries(initialData || {})),
     writes: [],
     deletedKeys: [],
   };
 
   return {
-    cacheAdapter: {
-      async getValue(key) {
-        return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+    context: {
+      utils: {
+        sanitizeForSearch: (text) => (typeof text === 'string' ? text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : ''),
       },
-      async setValue(key, value, ttlSeconds) {
-        hooks.data.set(key, value);
-        hooks.writes.push({ key, value, ttlSeconds });
-      },
-      async deleteValue(key) {
-        hooks.deletedKeys.push(key);
-        hooks.data.delete(key);
+      cache: {
+        async getValue(key) {
+          return hooks.data.has(key) ? hooks.data.get(key) || null : null;
+        },
+        async setValue(key, value, ttlSeconds) {
+          hooks.data.set(key, value);
+          hooks.writes.push({ key, value, ttlSeconds });
+        },
+        async deleteValue(key) {
+          hooks.deletedKeys.push(key);
+          hooks.data.delete(key);
+        },
       },
     },
     hooks,
@@ -67,7 +72,7 @@ function createMockHttpClient() {
   return { client, hooks };
 }
 
-async function createWrapper(httpClient, cacheAdapter, onCredentialsRequired) {
+async function createWrapper(httpClient, context) {
   const wrapper = await MangaDexAPIWrapper.init({
     serviceSettings: {
       'api.authUrl': 'https://auth.mangadex.org/realms/mangadex/protocol/openid-connect',
@@ -76,8 +81,7 @@ async function createWrapper(httpClient, cacheAdapter, onCredentialsRequired) {
       'api.endpoints.refreshToken.template': '${authUrl}/token',
     },
     httpClient,
-    cacheAdapter,
-    onCredentialsRequired,
+    context,
   });
 
   await wrapper.setCredentials({
@@ -91,7 +95,7 @@ async function createWrapper(httpClient, cacheAdapter, onCredentialsRequired) {
 }
 
 test('token flow - getToken fetches and caches access token', async () => {
-  const { cacheAdapter, hooks: cacheHooks } = createMockCacheAdapter();
+  const { context, hooks: cacheHooks } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
   httpHooks.postHandler = (url) => {
@@ -108,7 +112,7 @@ test('token flow - getToken fetches and caches access token', async () => {
     return { status: 200, data: {} };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const token = await wrapper.getToken();
   const tokenAgain = await wrapper.getToken();
 
@@ -119,17 +123,9 @@ test('token flow - getToken fetches and caches access token', async () => {
   assert.equal(cacheHooks.data.get('mangadex_refresh_token'), 'token-refresh');
 });
 
-test('token flow - callback can provide credentials when missing', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
-  const { client, hooks: httpHooks } = createMockHttpClient();
-
-  httpHooks.postHandler = () => ({
-    status: 200,
-    data: {
-      access_token: 'callback-access',
-      refresh_token: 'callback-refresh',
-    },
-  });
+test('token flow - getToken throws when credentials are missing', async () => {
+  const { context } = createMockContext();
+  const { client } = createMockHttpClient();
 
   const wrapper = await MangaDexAPIWrapper.init({
     serviceSettings: {
@@ -139,25 +135,21 @@ test('token flow - callback can provide credentials when missing', async () => {
       'api.endpoints.refreshToken.template': '${authUrl}/token',
     },
     httpClient: client,
-    cacheAdapter,
-    onCredentialsRequired: async () => ({
-      username: 'demo',
-      password: 'secret',
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-    }),
+    context,
   });
 
-  const token = await wrapper.getToken();
-  assert.equal(token, 'callback-access');
-  assert.equal(httpHooks.postCalls.length, 1);
+  // No credentials set — should throw
+  await assert.rejects(
+    async () => wrapper.getToken(),
+    /Credentials not found/,
+  );
 });
 
 test('token flow - token cache key and ttl follow mangadex conventions', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client } = createMockHttpClient();
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
 
   assert.equal(wrapper._getTokenCacheKey('access_token'), 'mangadex_access_token');
   assert.equal(wrapper._getTokenCacheKey('refresh_token'), 'mangadex_refresh_token');
@@ -167,10 +159,8 @@ test('token flow - token cache key and ttl follow mangadex conventions', async (
 });
 
 test('token flow - refresh token failure falls back to password flow and clears refresh cache', async () => {
-  const { cacheAdapter, hooks: cacheHooks } = createMockCacheAdapter();
+  const { context, hooks: cacheHooks } = createMockContext({ mangadex_refresh_token: 'stale-refresh-token' });
   const { client, hooks: httpHooks } = createMockHttpClient();
-
-  cacheHooks.data.set('mangadex_refresh_token', 'stale-refresh-token');
 
   httpHooks.postHandler = (_url, payload) => {
     const grantType = payload && typeof payload.get === 'function'
@@ -190,7 +180,7 @@ test('token flow - refresh token failure falls back to password flow and clears 
     };
   };
 
-  const wrapper = await createWrapper(client, cacheAdapter);
+  const wrapper = await createWrapper(client, context);
   const token = await wrapper.getToken();
 
   assert.equal(token, 'fallback-access');
@@ -200,7 +190,7 @@ test('token flow - refresh token failure falls back to password flow and clears 
 });
 
 test('token flow - missing token endpoint config fails fast', async () => {
-  const { cacheAdapter } = createMockCacheAdapter();
+  const { context } = createMockContext();
   const { client } = createMockHttpClient();
 
   const wrapper = await MangaDexAPIWrapper.init({
@@ -209,7 +199,7 @@ test('token flow - missing token endpoint config fails fast', async () => {
       'api.baseUrl': 'https://api.mangadex.org',
     },
     httpClient: client,
-    cacheAdapter,
+    context,
   });
 
   await wrapper.setCredentials({

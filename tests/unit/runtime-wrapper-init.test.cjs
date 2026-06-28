@@ -23,7 +23,7 @@ const {
   '..',
   '..',
   'scripts',
-  'build-runtime-tracker-package.cjs',
+  'build-runtime-plugin-package.cjs',
 ));
 
 function createMockHttpClient() {
@@ -75,7 +75,7 @@ test('init path - serviceSettings resolve from apiSettings when not provided dir
     });
 
     assert.equal(wrapper.settings['api.baseUrl'], 'https://api.mangadex.org');
-    assert.equal(typeof wrapper.onCredentialsRequired, 'function');
+    assert.equal(wrapper._initialized, false);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
