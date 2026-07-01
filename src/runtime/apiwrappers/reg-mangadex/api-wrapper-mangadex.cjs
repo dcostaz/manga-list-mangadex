@@ -237,6 +237,16 @@ class MangaDexAPIWrapper {
   get pluginName() { return SERVICE_NAME; }
   get pluginType() { return Object.freeze(['tracker']); }
   get capabilities() { return Object.freeze(['tracker.search', 'tracker.sync', 'tracker.cover', 'localtracker.enrich']); }
+
+  /** Credential fields the host renders in the plugin credential form. */
+  get credentialSchema() {
+    return Object.freeze([
+      { key: 'username', label: 'Username', type: 'text' },
+      { key: 'password', label: 'Password', type: 'password' },
+      { key: 'client_id', label: 'Client ID', type: 'text' },
+      { key: 'client_secret', label: 'Client Secret', type: 'password' },
+    ]);
+  }
   get contractVersion() {
     const { PLUGIN_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'plugindtocontract.cjs'));
     return PLUGIN_CONTRACT_VERSION;
