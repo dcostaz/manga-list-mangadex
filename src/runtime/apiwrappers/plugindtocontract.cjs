@@ -21,7 +21,7 @@ const CAPABILITY_TRACKER_FILE         = 'tracker.file';
 const CAPABILITY_TRACKER_COVER        = 'tracker.cover';
 const CAPABILITY_TRACKER_COVER_UPLOAD = 'tracker.cover.upload';
 
-const CAPABILITY_ADAPTER_ENRICH   = 'adapter.enrich';
+const CAPABILITY_LOCALTRACKER_ENRICH = 'localtracker.enrich';
 const CAPABILITY_ADAPTER_IMPORT   = 'adapter.import';
 const CAPABILITY_ADAPTER_DISCOVER = 'adapter.discover';
 
@@ -58,7 +58,7 @@ module.exports = {
   CAPABILITY_TRACKER_COVER,
   CAPABILITY_TRACKER_COVER_UPLOAD,
 
-  CAPABILITY_ADAPTER_ENRICH,
+  CAPABILITY_LOCALTRACKER_ENRICH,
   CAPABILITY_ADAPTER_IMPORT,
   CAPABILITY_ADAPTER_DISCOVER,
 

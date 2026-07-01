@@ -235,8 +235,8 @@ class MangaDexAPIWrapper {
 
   static get pluginName() { return SERVICE_NAME; }
   get pluginName() { return SERVICE_NAME; }
-  get pluginType() { return Object.freeze(['tracker', 'adapter']); }
-  get capabilities() { return Object.freeze(['tracker.search', 'tracker.sync', 'tracker.cover', 'adapter.enrich']); }
+  get pluginType() { return Object.freeze(['tracker']); }
+  get capabilities() { return Object.freeze(['tracker.search', 'tracker.sync', 'tracker.cover', 'localtracker.enrich']); }
   get contractVersion() {
     const { PLUGIN_CONTRACT_VERSION } = require(path.join(__dirname, '..', 'plugindtocontract.cjs'));
     return PLUGIN_CONTRACT_VERSION;
