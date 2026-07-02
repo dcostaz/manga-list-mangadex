@@ -222,7 +222,9 @@ class MangaDexAPIWrapper {
     this.credentials = null;
     this._context = providedContext && typeof providedContext === 'object' ? providedContext : null;
     this._initialized = false;
-    this.httpClient = providedHttpClient && typeof providedHttpClient === 'object'
+    // axios.create() returns a callable function (it supports both instance(config)
+    // and instance.get(url)), so typeof is 'function', not 'object' — accept both.
+    this.httpClient = providedHttpClient && (typeof providedHttpClient === 'object' || typeof providedHttpClient === 'function')
       ? providedHttpClient
       : createDefaultHttpClient();
 
@@ -369,7 +371,9 @@ class MangaDexAPIWrapper {
     const serviceSettingsFromApiSettings = resolvedApiSettings ? resolvedApiSettings.toLegacyFormat() : null;
     const serviceSettings = explicitServiceSettings || serviceSettingsFromApiSettings || {};
 
-    const directHttpClient = options && typeof options === 'object' && options.httpClient && typeof options.httpClient === 'object'
+    // axios.create() returns a callable function, so typeof is 'function', not 'object'.
+    const directHttpClient = options && typeof options === 'object' && options.httpClient
+      && (typeof options.httpClient === 'object' || typeof options.httpClient === 'function')
       ? options.httpClient
       : null;
     const httpClientFactory = options && typeof options === 'object' && typeof options.httpClientFactory === 'function'
@@ -594,8 +598,10 @@ class MangaDexAPIWrapper {
       params.append('username', credentials.username || '');
       params.append('password', credentials.password || '');
     }
-    params.append('client_id', credentials.clientId || '');
-    params.append('client_secret', credentials.clientSecret || '');
+    // credentialSchema declares these as 'client_id'/'client_secret' (matching
+    // what the stored credential object actually contains) — not camelCase.
+    params.append('client_id', credentials.client_id || '');
+    params.append('client_secret', credentials.client_secret || '');
 
     if (!this.httpClient || typeof this.httpClient.post !== 'function') {
       throw new Error('(_fetchNewToken) HTTP client post method is not configured');
@@ -1039,15 +1045,46 @@ class MangaDexAPIWrapper {
    */
   async _normalizeSeriesData(manga, useCache = true) {
     const relationships = Array.isArray(manga.relationships) ? manga.relationships : [];
-    const authorIds = relationships
-      .filter((rel) => rel && typeof rel === 'object' && (rel.type === 'author' || rel.type === 'artist'))
+    // MangaDex represents both authors and artists as 'author' resources; the
+    // role ('author' vs 'artist') only exists on the manga's relationship entry,
+    // not the resource itself — track it by id so it survives the lookup.
+    const authorRelationships = relationships
+      .filter((rel) => rel && typeof rel === 'object' && (rel.type === 'author' || rel.type === 'artist'));
+    const authorIds = authorRelationships
       .map((rel) => rel.id)
       .filter((id) => typeof id === 'string');
+    const roleById = new Map(authorRelationships.map((rel) => [rel.id, rel.type === 'artist' ? 'Artist' : 'Author']));
 
     const authorRows = authorIds.length > 0 ? await this.getAuthors(authorIds, useCache) : [];
-    const authorNames = authorRows
-      .map((row) => row && row.attributes && typeof row.attributes === 'object' ? row.attributes.name : null)
-      .filter((name) => typeof name === 'string' && name.trim());
+    const contributors = authorRows
+      .map((row) => {
+        const name = row && row.attributes && typeof row.attributes === 'object' ? row.attributes.name : null;
+        if (typeof name !== 'string' || !name.trim()) return null;
+        return { name: name.trim(), type: roleById.get(row.id) || 'Author' };
+      })
+      .filter((entry) => entry !== null);
+    const authorContributors = contributors.filter((c) => c.type === 'Author');
+    const artistContributors = contributors.filter((c) => c.type === 'Artist');
+
+    const tags = manga && manga.attributes && typeof manga.attributes === 'object' && Array.isArray(manga.attributes.tags)
+      ? manga.attributes.tags
+      : [];
+    const tagName = (tag) => (tag && typeof tag === 'object' && tag.attributes && typeof tag.attributes === 'object'
+      && tag.attributes.name && typeof tag.attributes.name === 'object' && typeof tag.attributes.name.en === 'string'
+      ? tag.attributes.name.en.trim()
+      : null);
+    const genreNames = tags
+      .filter((t) => t && typeof t === 'object' && t.attributes && t.attributes.group === 'genre')
+      .map(tagName)
+      .filter((n) => typeof n === 'string' && n);
+    const otherTagNames = tags
+      .filter((t) => t && typeof t === 'object' && t.attributes && t.attributes.group !== 'genre')
+      .map(tagName)
+      .filter((n) => typeof n === 'string' && n);
+    const formatTagNames = tags
+      .filter((t) => t && typeof t === 'object' && t.attributes && t.attributes.group === 'format')
+      .map(tagName)
+      .filter((n) => typeof n === 'string' && n);
 
     const altTitles = manga && manga.attributes && typeof manga.attributes === 'object' && Array.isArray(manga.attributes.altTitles)
       ? manga.attributes.altTitles
@@ -1085,13 +1122,19 @@ class MangaDexAPIWrapper {
         year: manga && manga.attributes && typeof manga.attributes === 'object' && typeof manga.attributes.year === 'number'
           ? manga.attributes.year
           : null,
-        type: typeof manga.type === 'string' ? manga.type : 'Manga',
+        type: formatTagNames.length > 0 ? formatTagNames[0] : 'Manga',
         description: manga && manga.attributes && typeof manga.attributes === 'object' && manga.attributes.description
           && typeof manga.attributes.description === 'object' && typeof manga.attributes.description.en === 'string'
           ? manga.attributes.description.en
           : '',
+        status: manga && manga.attributes && typeof manga.attributes === 'object' && typeof manga.attributes.status === 'string'
+          ? manga.attributes.status
+          : null,
         relationships,
-        authors: authorNames,
+        authors: authorContributors,
+        artists: artistContributors,
+        genres: genreNames,
+        tags: otherTagNames,
       },
       confidence: 100,
       matchType: 'exact',
@@ -1111,7 +1154,11 @@ class MangaDexAPIWrapper {
       }
       return this._normalizeSeriesData(result.data, useCache);
     } catch (error) {
-      return null;
+      // Real failures (network/auth) must propagate so the host surfaces the
+      // actual cause instead of a generic "no contribution" message; only an
+      // explicit null (not-found) means "no data".
+      console.error(`[mangadex] getSeriesById(${trackerId}) failed:`, error instanceof Error ? error.message : error);
+      throw error;
     }
   }
 
@@ -2061,6 +2108,7 @@ class MangaDexAPIWrapper {
         title: typeof r.title === 'string' ? r.title : q,
         altTitles: Array.isArray(r.alternativeTitles) ? r.alternativeTitles : [],
         confidence: typeof r.confidence === 'number' ? r.confidence : 0,
+        coverUrl: typeof r.coverUrl === 'string' ? r.coverUrl : undefined,
       }));
     } catch (error) {
       return [];
@@ -2068,49 +2116,65 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {string} pluginEntryId
-   * @returns {Promise<{ pluginEntryId: string, syncedAt: string }>}
+   * Map a MangaDex publication status to the PluginLinkContribution seriesStatus enum.
+   * @param {unknown} status
+   * @returns {'ongoing' | 'completed' | 'hiatus' | 'unknown'}
    */
-  async buildLinkContribution(pluginEntryId) {
-    return {
-      pluginEntryId: String(pluginEntryId),
-      syncedAt: new Date().toISOString(),
-    };
+  _mapSeriesStatus(status) {
+    const s = typeof status === 'string' ? status.toLowerCase() : '';
+    if (s === 'completed') return 'completed';
+    if (s === 'hiatus') return 'hiatus';
+    if (s === 'ongoing') return 'ongoing';
+    return 'unknown';
   }
 
   /**
-   * @param {Record<string, unknown>} localTrackerEntry
-   * @returns {Promise<{ pluginEntryId: string, syncedAt: string, displayTitle?: string, description?: string }>}
+   * Build a PluginLinkContribution for a linked MangaDex series. Re-fetches
+   * stable metadata (cover, titles, authors/artists, genres, status) from the
+   * manga detail endpoint and the canonical series URL.
+   * @param {string} pluginEntryId - MangaDex manga id
+   * @returns {Promise<import('../../../../types/plugintypedefs').PluginLinkContribution | null>}
+   */
+  async buildLinkContribution(pluginEntryId) {
+    const series = await this.getSeriesById(pluginEntryId, true);
+    if (!series) return null;
+    const md = series.metadata && typeof series.metadata === 'object' ? series.metadata : {};
+
+    let seriesUrl = null;
+    try { seriesUrl = await this.getSeriesUrl(pluginEntryId); } catch { seriesUrl = null; }
+
+    /** @type {import('../../../../types/plugintypedefs').PluginLinkContribution} */
+    const contribution = {
+      pluginEntryId: String(pluginEntryId),
+      syncedAt: new Date().toISOString(),
+      seriesStatus: this._mapSeriesStatus(md.status),
+    };
+    if (series.title) contribution.displayTitle = series.title;
+    if (Array.isArray(series.alternativeTitles) && series.alternativeTitles.length) contribution.altTitles = series.alternativeTitles;
+    if (Array.isArray(md.authors) && md.authors.length) contribution.authors = md.authors;
+    if (Array.isArray(md.artists) && md.artists.length) contribution.artists = md.artists;
+    if (Array.isArray(md.genres) && md.genres.length) contribution.genres = md.genres;
+    if (Array.isArray(md.tags) && md.tags.length) contribution.tags = md.tags;
+    if (md.description) contribution.description = md.description;
+    if (series.coverUrl) contribution.coverUrl = series.coverUrl;
+    if (typeof md.year === 'number' && Number.isFinite(md.year)) contribution.year = md.year;
+    if (typeof md.type === 'string' && md.type) contribution.seriesType = md.type;
+    contribution.sourceLinks = seriesUrl
+      ? [{ siteId: SERVICE_NAME, siteLabel: 'MangaDex', seriesUrl, isPrimary: true }]
+      : [];
+    return contribution;
+  }
+
+  /**
+   * Same enrichment as buildLinkContribution, resolving the manga id from the
+   * supplied LocalTrackerEntry (host passes the linked pluginEntryId).
+   * @param {{ pluginEntryId?: string, trackerId?: string }} localTrackerEntry
+   * @returns {Promise<import('../../../../types/plugintypedefs').PluginLinkContribution | null>}
    */
   async syncEnrichment(localTrackerEntry) {
     const pluginEntryId = localTrackerEntry && (localTrackerEntry.pluginEntryId || localTrackerEntry.trackerId);
-    if (!pluginEntryId) {
-      return { pluginEntryId: '', syncedAt: new Date().toISOString() };
-    }
-    try {
-      const detail = await this.getMangaById(String(pluginEntryId));
-      const detailData = detail && typeof detail === 'object' && detail.data && typeof detail.data === 'object'
-        ? detail.data
-        : null;
-      const attributes = detailData && detailData.attributes && typeof detailData.attributes === 'object'
-        ? detailData.attributes
-        : null;
-      const titleValues = attributes && attributes.title && typeof attributes.title === 'object'
-        ? Object.values(attributes.title).filter((e) => typeof e === 'string' && e.trim())
-        : [];
-      const displayTitle = titleValues.length > 0 ? String(titleValues[0]) : undefined;
-      const description = attributes && attributes.description && typeof attributes.description === 'object' && typeof attributes.description.en === 'string'
-        ? attributes.description.en
-        : undefined;
-      return {
-        pluginEntryId: String(pluginEntryId),
-        syncedAt: new Date().toISOString(),
-        ...(displayTitle !== undefined ? { displayTitle } : {}),
-        ...(description !== undefined ? { description } : {}),
-      };
-    } catch (error) {
-      return { pluginEntryId: String(pluginEntryId), syncedAt: new Date().toISOString() };
-    }
+    if (!pluginEntryId) return null;
+    return this.buildLinkContribution(pluginEntryId);
   }
 }
 
