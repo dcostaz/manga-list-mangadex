@@ -9,10 +9,15 @@
 // Cache adapter (§4.8 — replaces TrackerCacheAdapterLike)
 // ---------------------------------------------------------------------------
 
+/** Plan-2026Q3-namespacedcacheadapter-user-isolation: userScoped segments the key by the active user. */
+export interface PluginCacheCallOptions {
+  userScoped?: boolean;
+}
+
 export interface PluginCacheAdapterLike {
-  getValue(key: string): Promise<unknown>;
-  setValue(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
-  deleteValue?(key: string): Promise<void>;
+  getValue(key: string, options?: PluginCacheCallOptions): Promise<unknown>;
+  setValue(key: string, value: unknown, ttlSeconds?: number, options?: PluginCacheCallOptions): Promise<void>;
+  deleteValue?(key: string, options?: PluginCacheCallOptions): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
