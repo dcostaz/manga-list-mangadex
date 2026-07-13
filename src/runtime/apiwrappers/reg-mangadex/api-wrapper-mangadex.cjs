@@ -277,7 +277,7 @@ class MangaDexAPIWrapper {
     const refreshKey = this._getTokenCacheKey('refresh_token');
     let refreshToken = current.refreshToken || null;
     if (this._context && this._context.cache) {
-      const cached = await this._context.cache.getValue(refreshKey);
+      const cached = await this._context.cache.getValue(refreshKey, { userScoped: true });
       if (cached) refreshToken = cached;
     }
     return {
@@ -547,7 +547,7 @@ class MangaDexAPIWrapper {
     }
 
     if (!forceRefresh && (this._context && this._context.cache)) {
-      const cached = await this._context.cache.getValue(accessKey);
+      const cached = await this._context.cache.getValue(accessKey, { userScoped: true });
       if (cached) {
         this.bearerToken = cached;
         return cached;
@@ -579,7 +579,7 @@ class MangaDexAPIWrapper {
   async _fetchNewToken(credentials, options = {}) {
     const forceRefresh = options && typeof options === 'object' && options.forceRefresh === true;
     const refreshKey = this._getTokenCacheKey('refresh_token');
-    const cachedRefreshToken = forceRefresh ? null : ((this._context && this._context.cache) ? await this._context.cache.getValue(refreshKey) : null);
+    const cachedRefreshToken = forceRefresh ? null : ((this._context && this._context.cache) ? await this._context.cache.getValue(refreshKey, { userScoped: true }) : null);
     const useRefreshFlow = Boolean(cachedRefreshToken) && !forceRefresh;
 
     const endpoint = this._resolveEndpoint(
@@ -625,7 +625,7 @@ class MangaDexAPIWrapper {
     } catch (error) {
       if (useRefreshFlow) {
         if ((this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
-          await this._context.cache.deleteValue(refreshKey);
+          await this._context.cache.deleteValue(refreshKey, { userScoped: true });
         }
         return this._fetchNewToken(credentials, { forceRefresh: true });
       }
@@ -659,6 +659,7 @@ class MangaDexAPIWrapper {
         this._getTokenCacheKey('access_token'),
         tokenData.access_token,
         this._getTokenTTL('access_token'),
+        { userScoped: true },
       );
       this.bearerToken = tokenData.access_token;
     }
@@ -668,6 +669,7 @@ class MangaDexAPIWrapper {
         this._getTokenCacheKey('refresh_token'),
         tokenData.refresh_token,
         this._getTokenTTL('refresh_token'),
+        { userScoped: true },
       );
     }
   }
@@ -1262,7 +1264,7 @@ class MangaDexAPIWrapper {
 
     const cacheKey = `mangadex_readingStatus_${seriesId}`;
     if (useCache && (this._context && this._context.cache)) {
-      const cached = await this._context.cache.getValue(cacheKey);
+      const cached = await this._context.cache.getValue(cacheKey, { userScoped: true });
       if (cached) {
         return cached;
       }
@@ -1289,7 +1291,7 @@ class MangaDexAPIWrapper {
         : {};
       const status = typeof responseData.status === 'string' ? responseData.status : null;
       if (status && (this._context && this._context.cache)) {
-        await this._context.cache.setValue(cacheKey, status, 60 * 60);
+        await this._context.cache.setValue(cacheKey, status, 60 * 60, { userScoped: true });
       }
 
       return status;
@@ -1355,7 +1357,7 @@ class MangaDexAPIWrapper {
     });
 
     if (this._context && this._context.cache) {
-      await this._context.cache.setValue(`mangadex_readingStatus_${trackerId}`, status, 60 * 60);
+      await this._context.cache.setValue(`mangadex_readingStatus_${trackerId}`, status, 60 * 60, { userScoped: true });
     }
 
     return {
@@ -1441,7 +1443,7 @@ class MangaDexAPIWrapper {
     });
 
     if (this._context && this._context.cache) {
-      await this._context.cache.setValue(`mangadex_readingStatus_${seriesId}`, mappedStatus, 60 * 60);
+      await this._context.cache.setValue(`mangadex_readingStatus_${seriesId}`, mappedStatus, 60 * 60, { userScoped: true });
     }
 
     return { success: true, mode: 'subscribed', listId: null };
@@ -1516,7 +1518,7 @@ class MangaDexAPIWrapper {
     });
 
     if ((this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
-      await this._context.cache.deleteValue(`mangadex_readingStatus_${seriesId}`);
+      await this._context.cache.deleteValue(`mangadex_readingStatus_${seriesId}`, { userScoped: true });
     }
   }
 

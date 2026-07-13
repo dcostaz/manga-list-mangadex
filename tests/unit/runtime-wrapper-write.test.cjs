@@ -15,10 +15,17 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
+/**
+ * Plan-2026Q3-namespacedcacheadapter-user-isolation: captures the full options
+ * argument on every call, not just key/value, so tests can assert
+ * { userScoped: true } is actually passed at each migrated call site.
+ */
 function createMockContext(initialData) {
   const hooks = {
     data: new Map(Object.entries(initialData || {})),
+    writes: [],
     deletedKeys: [],
+    deletes: [],
   };
 
   return {
@@ -30,11 +37,13 @@ function createMockContext(initialData) {
         async getValue(key) {
           return hooks.data.has(key) ? hooks.data.get(key) || null : null;
         },
-        async setValue(key, value) {
+        async setValue(key, value, ttlSeconds, options) {
           hooks.data.set(key, value);
+          hooks.writes.push({ key, value, options });
         },
-        async deleteValue(key) {
+        async deleteValue(key, options) {
           hooks.deletedKeys.push(key);
+          hooks.deletes.push({ key, options });
           hooks.data.delete(key);
         },
       },
@@ -127,6 +136,11 @@ test('write flow - subscribe follows and maps status', async () => {
   assert.equal(httpHooks.postCalls[2].url, 'https://api.mangadex.org/manga/series-follow/status');
   assert.deepEqual(httpHooks.postCalls[2].payload, { status: 'completed' });
   assert.equal(cacheHooks.data.get('mangadex_readingStatus_series-follow'), 'completed');
+
+  // Plan-2026Q3-namespacedcacheadapter-user-isolation: found during Phase 4 execution -- subscribe()'s
+  // reading-status write was missing from the original call-site inventory.
+  const statusWrite = cacheHooks.writes.find((w) => w.key === 'mangadex_readingStatus_series-follow');
+  assert.deepEqual(statusWrite?.options, { userScoped: true });
 });
 
 test('write flow - pushProgress returns success false when status missing', async () => {
@@ -169,6 +183,10 @@ test('write flow - updateStatus returns response status and updates cache', asyn
   assert.equal(result.status, 202);
   assert.deepEqual(result.data, { result: 'ok' });
   assert.equal(cacheHooks.data.get('mangadex_readingStatus_series-status'), 'completed');
+
+  // Plan-2026Q3-namespacedcacheadapter-user-isolation: reading status is per-user state.
+  const statusWrite = cacheHooks.writes.find((w) => w.key === 'mangadex_readingStatus_series-status');
+  assert.deepEqual(statusWrite?.options, { userScoped: true });
 });
 
 test('write flow - unfollowManga deletes cached status key', async () => {
@@ -193,6 +211,10 @@ test('write flow - unfollowManga deletes cached status key', async () => {
   assert.equal(httpHooks.deleteCalls[0].url, 'https://api.mangadex.org/manga/series-unfollow/follow');
   assert.equal(cacheHooks.deletedKeys.includes('mangadex_readingStatus_series-unfollow'), true);
   assert.equal(cacheHooks.data.has('mangadex_readingStatus_series-unfollow'), false);
+
+  // Plan-2026Q3-namespacedcacheadapter-user-isolation: reading status is per-user state.
+  const statusDelete = cacheHooks.deletes.find((d) => d.key === 'mangadex_readingStatus_series-unfollow');
+  assert.deepEqual(statusDelete?.options, { userScoped: true });
 });
 
 test('write flow - pushProgress with status delegates to status update and succeeds', async () => {

@@ -15,11 +15,18 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
+/**
+ * Plan-2026Q3-namespacedcacheadapter-user-isolation: captures the full options
+ * argument on every call, not just key/value, so tests can assert
+ * { userScoped: true } is actually passed at each migrated call site.
+ */
 function createMockContext(initialData) {
   const hooks = {
     data: new Map(Object.entries(initialData || {})),
+    reads: [],
     writes: [],
     deletedKeys: [],
+    deletes: [],
   };
 
   return {
@@ -28,15 +35,17 @@ function createMockContext(initialData) {
         sanitizeForSearch: (text) => (typeof text === 'string' ? text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : ''),
       },
       cache: {
-        async getValue(key) {
+        async getValue(key, options) {
+          hooks.reads.push({ key, options });
           return hooks.data.has(key) ? hooks.data.get(key) || null : null;
         },
-        async setValue(key, value, ttlSeconds) {
+        async setValue(key, value, ttlSeconds, options) {
           hooks.data.set(key, value);
-          hooks.writes.push({ key, value, ttlSeconds });
+          hooks.writes.push({ key, value, ttlSeconds, options });
         },
-        async deleteValue(key) {
+        async deleteValue(key, options) {
           hooks.deletedKeys.push(key);
+          hooks.deletes.push({ key, options });
           hooks.data.delete(key);
         },
       },
@@ -121,6 +130,10 @@ test('token flow - getToken fetches and caches access token', async () => {
   assert.equal(httpHooks.postCalls.length, 1);
   assert.equal(cacheHooks.data.get('mangadex_access_token'), 'token-access');
   assert.equal(cacheHooks.data.get('mangadex_refresh_token'), 'token-refresh');
+
+  // Plan-2026Q3-namespacedcacheadapter-user-isolation: both tokens are user-derived.
+  assert.ok(cacheHooks.writes.every((w) => w.options?.userScoped === true), 'every token write must pass userScoped: true');
+  assert.ok(cacheHooks.reads.every((r) => r.options?.userScoped === true), 'every token read must pass userScoped: true');
 });
 
 test('token flow - getToken throws when credentials are missing', async () => {
@@ -187,6 +200,10 @@ test('token flow - refresh token failure falls back to password flow and clears 
   assert.equal(httpHooks.postCalls.length, 2);
   assert.equal(cacheHooks.deletedKeys.includes('mangadex_refresh_token'), true);
   assert.equal(cacheHooks.data.get('mangadex_refresh_token'), 'fallback-refresh');
+
+  // Plan-2026Q3-namespacedcacheadapter-user-isolation: the stale-refresh-token delete is user-scoped too.
+  const deleteCall = cacheHooks.deletes.find((d) => d.key === 'mangadex_refresh_token');
+  assert.deepEqual(deleteCall?.options, { userScoped: true });
 });
 
 test('token flow - missing token endpoint config fails fast', async () => {

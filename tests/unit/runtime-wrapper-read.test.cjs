@@ -15,9 +15,16 @@ const MangaDexAPIWrapper = require(path.join(
   'api-wrapper-mangadex.cjs',
 ));
 
+/**
+ * Plan-2026Q3-namespacedcacheadapter-user-isolation: captures the full options
+ * argument on every call, not just key/value, so tests can assert
+ * { userScoped: true } is actually passed at each migrated call site.
+ */
 function createMockContext(initialData) {
   const hooks = {
     data: new Map(Object.entries(initialData || {})),
+    reads: [],
+    writes: [],
     deletedKeys: [],
   };
 
@@ -27,11 +34,13 @@ function createMockContext(initialData) {
         sanitizeForSearch: (text) => (typeof text === 'string' ? text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : ''),
       },
       cache: {
-        async getValue(key) {
+        async getValue(key, options) {
+          hooks.reads.push({ key, options });
           return hooks.data.has(key) ? hooks.data.get(key) || null : null;
         },
-        async setValue(key, value) {
+        async setValue(key, value, ttlSeconds, options) {
           hooks.data.set(key, value);
+          hooks.writes.push({ key, value, options });
         },
         async deleteValue(key) {
           hooks.deletedKeys.push(key);
@@ -268,6 +277,10 @@ test('read flow - getReadingStatus uses cache when available', async () => {
 
   assert.equal(status, 'reading');
   assert.equal(httpHooks.getCalls.length, 0);
+
+  // Plan-2026Q3-namespacedcacheadapter-user-isolation: reading status is per-user state.
+  const statusRead = cacheHooks.reads.find((r) => r.key === 'mangadex_readingStatus_series-cached');
+  assert.deepEqual(statusRead?.options, { userScoped: true });
 });
 
 test('read flow - getUserProgressRaw returns normalized payload', async () => {
