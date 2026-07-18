@@ -10,6 +10,7 @@
     "settingsFile": "apiwrappers/reg-mangadex/mangadex-api-settings.json"
   },
   "syncOptions": {
+    "searchRequiresAuth": true,
     "statusVocabulary": {
       "READING":      "reading",
       "COMPLETED":    "completed",
