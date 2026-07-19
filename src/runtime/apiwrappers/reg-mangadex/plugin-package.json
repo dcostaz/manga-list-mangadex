@@ -4,7 +4,7 @@
   "pluginContractVersion": "1.0.0",
   "hostApiVersion": "1.0.0",
   "iconPath": "images/mangadex-icon.svg",
-  "capabilities": ["tracker.search", "tracker.sync", "tracker.cover", "localtracker.enrich"],
+  "capabilities": ["tracker.search", "tracker.sync", "tracker.cover", "localtracker.enrich", "plugin.live"],
   "entrypoints": {
     "pluginModule": "apiwrappers/reg-mangadex/plugin-module.cjs",
     "settingsFile": "apiwrappers/reg-mangadex/mangadex-api-settings.json"
