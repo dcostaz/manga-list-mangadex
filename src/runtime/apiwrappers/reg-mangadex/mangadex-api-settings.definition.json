@@ -185,6 +185,36 @@
       "category": "performance",
       "order": 760
     },
+    "api.endpoints.statusList.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/manga/status",
+      "description": "Bulk reading-list status endpoint template (every followed manga's status in one call)",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 272
+    },
+    "api.endpoints.rating.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/rating/${id}",
+      "description": "Per-manga rating create/update/delete endpoint template",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 274
+    },
+    "api.endpoints.ratingList.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/rating",
+      "description": "Bulk self-rating lookup endpoint template (GET /rating?manga[]=...)",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 276
+    },
     "statusMapping.READING": {
       "type": "string",
       "required": true,

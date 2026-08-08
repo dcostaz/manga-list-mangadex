@@ -119,6 +119,23 @@ export interface PluginProgressDTO {
   lastUpdated?: string | null;
 }
 
+/**
+ * Result of comparing a host-known PluginProgressDTO (e.g. the local
+ * Bookmark's state) against one this source just reported, via
+ * `compareProgress()`. Owner correction 2026-07-23: comparison must live in
+ * the plugin, not the host — a source's own representation limits (e.g.
+ * MangaDex's rating is a strict integer 1-10, no chapter concept at all)
+ * belong with the source that has them, so the host never carries
+ * per-plugin exception logic for this. `null` on any field means the
+ * comparison couldn't be made (a side was missing), never a guessed `false`.
+ */
+export interface PluginProgressComparisonResult {
+  chapterAhead: boolean | null;
+  chapterBehindOrEqual: boolean | null;
+  ratingDiffers: boolean | null;
+  statusDiffers: boolean | null;
+}
+
 export interface PluginSubscribeContext {
   readingStatus: string;   // local status name e.g. 'READING'
   chapter?: number;

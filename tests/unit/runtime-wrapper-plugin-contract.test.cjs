@@ -88,6 +88,7 @@ async function createWrapper(httpClient, context) {
       'api.endpoints.manga.template': '${baseUrl}/manga',
       'api.endpoints.cover.template': '${baseUrl}/cover',
       'api.endpoints.status.template': '${baseUrl}/manga/${id}/status',
+      'api.endpoints.ratingList.template': '${baseUrl}/rating',
     },
     httpClient,
     context,
@@ -310,7 +311,29 @@ test('pullProgress - maps MangaDex reading status to the app ReadingStatus enum'
   const wrapper = await createWrapper(client, context);
   const progress = await wrapper.pullProgress('series-9');
 
-  assert.deepEqual(progress, { status: 'ON_HOLD', chapter: null, volume: null });
+  assert.deepEqual(progress, { status: 'ON_HOLD', rating: null, chapter: null, volume: null });
+});
+
+test('pullProgress - includes rating in line with getReadingList() (owner correction 2026-07-23)', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = tokenPostHandler;
+  httpHooks.getHandler = (url) => {
+    const u = String(url);
+    if (u.includes('/status')) {
+      return { status: 200, data: { status: 'reading' } };
+    }
+    if (u.endsWith('/rating')) {
+      return { status: 200, data: { result: 'ok', ratings: { 'series-rated': { rating: 8 } } } };
+    }
+    return { status: 200, data: {} };
+  };
+
+  const wrapper = await createWrapper(client, context);
+  const progress = await wrapper.pullProgress('series-rated');
+
+  assert.deepEqual(progress, { status: 'READING', rating: 8, chapter: null, volume: null });
 });
 
 test('pullProgress - returns null when MangaDex has no reading status for the series', async () => {

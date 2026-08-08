@@ -98,6 +98,7 @@ async function createWrapper(httpClient, context) {
       'api.endpoints.refreshToken.template': '${authUrl}/token',
       'api.endpoints.follow.template': '${baseUrl}/manga/${id}/follow',
       'api.endpoints.status.template': '${baseUrl}/manga/${id}/status',
+      'api.endpoints.rating.template': '${baseUrl}/rating/${id}',
     },
     httpClient,
     context,
@@ -241,4 +242,125 @@ test('write flow - pushProgress with status delegates to status update and succe
   assert.equal(result.success, true);
   assert.equal(typeof result.message, 'string');
   assert.equal(httpHooks.postCalls.some((call) => String(call.url).endsWith('/manga/series-progress/status')), true);
+});
+
+test('write flow - updateRating posts to the real rating endpoint (2026-07-23 fix: was a hard "not supported" stub)', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = (url) => {
+    if (String(url).endsWith('/token')) {
+      return { status: 200, data: { access_token: 'write-access', refresh_token: 'write-refresh' } };
+    }
+    return { status: 200, data: { result: 'ok' } };
+  };
+
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.updateRating('series-rating', 8);
+
+  assert.equal(result.status, 200);
+  const ratingCall = httpHooks.postCalls.find((call) => String(call.url).endsWith('/rating/series-rating'));
+  assert.ok(ratingCall, 'expected a POST to /rating/series-rating');
+  assert.equal(ratingCall.payload.rating, 8);
+});
+
+test('write flow - updateRating rejects out-of-range values without calling the API', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  const wrapper = await createWrapper(client, context);
+  await assert.rejects(() => wrapper.updateRating('series-rating', 11));
+  await assert.rejects(() => wrapper.updateRating('series-rating', 0));
+  assert.equal(httpHooks.postCalls.filter((c) => String(c.url).includes('/rating/')).length, 0);
+});
+
+test('write flow - deleteRating issues a real DELETE to the rating endpoint', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = (url) => {
+    if (String(url).endsWith('/token')) {
+      return { status: 200, data: { access_token: 'write-access', refresh_token: 'write-refresh' } };
+    }
+    return { status: 200, data: {} };
+  };
+  httpHooks.deleteHandler = () => ({ status: 200, data: { result: 'ok' } });
+
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.deleteRating('series-rating');
+
+  assert.equal(result.status, 200);
+  assert.ok(httpHooks.deleteCalls.some((c) => String(c.url).endsWith('/rating/series-rating')));
+});
+
+test('write flow - pushProgress routes rating:0 to deleteRating, not updateRating (mangalist\'s own 0-means-cleared scale vs MangaDex\'s zero-less 1-10 range)', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = (url) => {
+    if (String(url).endsWith('/token')) {
+      return { status: 200, data: { access_token: 'write-access', refresh_token: 'write-refresh' } };
+    }
+    return { status: 200, data: {} };
+  };
+  httpHooks.deleteHandler = () => ({ status: 200, data: { result: 'ok' } });
+
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.pushProgress('series-progress', { rating: 0 });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.updatedFields, ['rating']);
+  assert.ok(httpHooks.deleteCalls.some((c) => String(c.url).endsWith('/rating/series-progress')), 'expected a DELETE, not a POST, for rating:0');
+  assert.equal(httpHooks.postCalls.some((c) => String(c.url).endsWith('/rating/series-progress')), false);
+});
+
+test('write flow - pushProgress with only rating succeeds without touching status', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = (url) => {
+    if (String(url).endsWith('/token')) {
+      return { status: 200, data: { access_token: 'write-access', refresh_token: 'write-refresh' } };
+    }
+    return { status: 200, data: { result: 'ok' } };
+  };
+
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.pushProgress('series-progress', { rating: 9 });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.updatedFields, ['rating']);
+  assert.equal(httpHooks.postCalls.some((call) => String(call.url).endsWith('/manga/series-progress/status')), false);
+  assert.equal(httpHooks.postCalls.some((call) => String(call.url).endsWith('/rating/series-progress')), true);
+});
+
+test('write flow - pushProgress with both status and rating updates both independently', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = (url) => {
+    if (String(url).endsWith('/token')) {
+      return { status: 200, data: { access_token: 'write-access', refresh_token: 'write-refresh' } };
+    }
+    return { status: 200, data: { result: 'ok' } };
+  };
+
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.pushProgress('series-progress', { status: 'COMPLETED', rating: 10 });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.updatedFields, ['status', 'rating']);
+  assert.equal(httpHooks.postCalls.some((call) => String(call.url).endsWith('/manga/series-progress/status')), true);
+  assert.equal(httpHooks.postCalls.some((call) => String(call.url).endsWith('/rating/series-progress')), true);
+});
+
+test('write flow - pushProgress with neither status nor rating fails cleanly', async () => {
+  const { context } = createMockContext();
+  const { client } = createMockHttpClient();
+
+  const wrapper = await createWrapper(client, context);
+  const result = await wrapper.pushProgress('series-progress', { chapter: 5 });
+
+  assert.equal(result.success, false);
+  assert.equal(typeof result.error, 'string');
 });
