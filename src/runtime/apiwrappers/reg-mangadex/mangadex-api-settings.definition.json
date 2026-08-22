@@ -316,7 +316,7 @@
           "description": "Account password used to request tokens."
         },
         {
-          "key": "clientId",
+          "key": "client_id",
           "label": "Client ID",
           "type": "text",
           "required": true,
@@ -324,7 +324,7 @@
           "description": "OAuth client ID from MangaDex developer settings."
         },
         {
-          "key": "clientSecret",
+          "key": "client_secret",
           "label": "Client Secret",
           "type": "password",
           "required": true,
@@ -361,8 +361,8 @@
         "credentialKeys": [
           "username",
           "password",
-          "clientId",
-          "clientSecret"
+          "client_id",
+          "client_secret"
         ]
       }
     },

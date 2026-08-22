@@ -2,9 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const os = require('os');
 const path = require('path');
-const fs = require('fs').promises;
 
 const MangaDexAPIWrapper = require(path.join(
   __dirname,
@@ -97,8 +95,8 @@ async function createWrapper(httpClient, context) {
   await wrapper.setCredentials({
     username: 'demo',
     password: 'secret',
-    clientId: 'client-id',
-    clientSecret: 'client-secret',
+    client_id: 'client-id',
+    client_secret: 'client-secret',
   });
 
   return wrapper;
@@ -121,6 +119,12 @@ function assertCoverSearchContract(cover) {
   assert.equal(cover.tracker.id.length > 0, true);
   assert.equal(typeof cover.tracker?.url, 'string');
   assert.equal(cover.tracker.url.length > 0, true);
+
+  // host-capability-contract.md §2's enrich.cover mapping -- additive field, matches
+  // downloadCover(coverId)'s own "${mangaId}/${fileName}" bridging convention
+  // (Plan-2026Q3-mangadex-capability-vocabulary, Phase 4).
+  assert.equal(typeof cover.coverId, 'string');
+  assert.equal(cover.coverId, `${cover.tracker.id}/${cover.tracker.fileName}`);
 
   assert.equal(typeof cover.fetchedAt, 'string');
   assert.equal(cover.fetchedAt.length > 0, true);
@@ -527,7 +531,13 @@ test('cover flow - searchCovers emits progress events and sorts covers by volume
   assert.equal(covers[1].tracker.score, 100);
 });
 
-test('cover flow - downloadCover writes file and reuses cache', async () => {
+// host-capability-contract.md §2's enrich.cover mapping -- downloadCover(coverId): Promise<Buffer>.
+// Plan-2026Q3-mangadex-capability-vocabulary, Phase 4: refactored from the pre-migration
+// (metadata, savePath): Promise<boolean> shape -- the plugin no longer writes to disk itself
+// (ImageService.downloadCover() does that now), and coverId is the "${mangaId}/${fileName}"
+// bridging convention ImageService's own _invokeProviderDownload() constructs.
+
+test('cover flow - downloadCover(coverId) returns image bytes, never writes to disk itself', async () => {
   const { context } = createMockContext();
   const { client, hooks: httpHooks } = createMockHttpClient();
 
@@ -544,27 +554,55 @@ test('cover flow - downloadCover writes file and reuses cache', async () => {
 
   const wrapper = await createWrapper(client, context);
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mangadex-cover-wave5-'));
-  const outputFile = path.join(tempDir, 'cover.bin');
+  const buffer = await wrapper.downloadCover('series-cover/cover-a.jpg');
 
-  try {
-    const downloaded = await wrapper.downloadCover(
-      { mangaId: 'series-cover', fileName: 'cover-a.jpg' },
-      outputFile,
-    );
+  assert.equal(Buffer.isBuffer(buffer), true);
+  assert.equal(buffer.length > 0, true);
+  assert.equal(buffer.toString(), 'cover-bytes');
+  assert.equal(httpHooks.getCalls.some((c) => String(c.url).includes('uploads.mangadex.org/covers/series-cover/cover-a.jpg')), true);
+});
 
-    assert.equal(downloaded, true);
-    const written = await fs.readFile(outputFile);
-    assert.equal(written.length > 0, true);
+test('cover flow - downloadCover(coverId) reuses the cache, no second HTTP GET', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
 
-    const secondFile = path.join(tempDir, 'cover-cache.bin');
-    const downloadedAgain = await wrapper.downloadCover(
-      { mangaId: 'series-cover', fileName: 'cover-a.jpg' },
-      secondFile,
-    );
+  httpHooks.getHandler = (url) => {
+    if (String(url).includes('uploads.mangadex.org/covers')) {
+      return { status: 200, data: Buffer.from('cover-bytes') };
+    }
+    return { status: 200, data: {} };
+  };
 
-    assert.equal(downloadedAgain, true);
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
-  }
+  const wrapper = await createWrapper(client, context);
+
+  const first = await wrapper.downloadCover('series-cover/cover-a.jpg');
+  const coverGetCallsAfterFirst = httpHooks.getCalls.filter((c) => String(c.url).includes('uploads.mangadex.org/covers')).length;
+  const second = await wrapper.downloadCover('series-cover/cover-a.jpg');
+  const coverGetCallsAfterSecond = httpHooks.getCalls.filter((c) => String(c.url).includes('uploads.mangadex.org/covers')).length;
+
+  assert.equal(first.toString(), 'cover-bytes');
+  assert.equal(second.toString(), 'cover-bytes');
+  assert.equal(coverGetCallsAfterFirst, 1);
+  assert.equal(coverGetCallsAfterSecond, 1, 'the second call must be served from cache, not a new HTTP GET');
+});
+
+test('cover flow - downloadCover() throws on a malformed coverId, not just returns false', async () => {
+  const { context } = createMockContext();
+  const { client } = createMockHttpClient();
+
+  const wrapper = await createWrapper(client, context);
+
+  await assert.rejects(() => wrapper.downloadCover('not-a-valid-coverid'));
+  await assert.rejects(() => wrapper.downloadCover(''));
+});
+
+test('cover flow - downloadCover() throws on an empty response body', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.getHandler = () => ({ status: 200, data: Buffer.alloc(0) });
+
+  const wrapper = await createWrapper(client, context);
+
+  await assert.rejects(() => wrapper.downloadCover('series-cover/missing.jpg'));
 });

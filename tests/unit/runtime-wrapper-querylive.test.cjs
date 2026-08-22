@@ -46,8 +46,8 @@ async function createWrapper() {
   await wrapper.setCredentials({
     username: 'demo',
     password: 'secret',
-    clientId: 'client-id',
-    clientSecret: 'client-secret',
+    client_id: 'client-id',
+    client_secret: 'client-secret',
   });
   return wrapper;
 }
