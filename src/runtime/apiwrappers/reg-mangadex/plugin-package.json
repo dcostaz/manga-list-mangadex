@@ -1,7 +1,7 @@
 {
   "pluginName": "mangadex",
   "pluginType": ["tracker"],
-  "pluginContractVersion": "1.0.0",
+  "pluginContractVersion": "2.0.0",
   "hostApiVersion": "1.0.0",
   "iconPath": "images/mangadex-icon.svg",
   "capabilities": ["tracker.search", "tracker.sync", "tracker.cover", "localtracker.enrich", "plugin.live"],
