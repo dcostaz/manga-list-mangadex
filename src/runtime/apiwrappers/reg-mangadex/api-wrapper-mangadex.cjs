@@ -239,7 +239,7 @@ class MangaDexAPIWrapper {
   static get pluginName() { return SERVICE_NAME; }
   get pluginName() { return SERVICE_NAME; }
   get pluginType() { return Object.freeze(['tracker']); }
-  get capabilities() { return Object.freeze(['tracker.search', 'tracker.sync', 'tracker.cover', 'localtracker.enrich', 'plugin.live']); }
+  get capabilities() { return Object.freeze(['credential', 'search.query', 'search.lookup', 'enrich', 'enrich.cover', 'sync.pull', 'sync.push', 'sync.list', 'subscribe.add', 'subscribe.remove', 'plugin.live']); }
 
   /** Credential fields the host renders in the plugin credential form. */
   get credentialSchema() {
