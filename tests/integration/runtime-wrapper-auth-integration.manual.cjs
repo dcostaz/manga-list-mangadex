@@ -110,14 +110,14 @@ test(
     const credentials = {
       username: typeof process.env.MDX_TEST_USERNAME === 'string' ? process.env.MDX_TEST_USERNAME.trim() : '',
       password: typeof process.env.MDX_TEST_PASSWORD === 'string' ? process.env.MDX_TEST_PASSWORD.trim() : '',
-      clientId: typeof process.env.MDX_TEST_CLIENT_ID === 'string' ? process.env.MDX_TEST_CLIENT_ID.trim() : '',
-      clientSecret: typeof process.env.MDX_TEST_CLIENT_SECRET === 'string' ? process.env.MDX_TEST_CLIENT_SECRET.trim() : '',
+      client_id: typeof process.env.MDX_TEST_CLIENT_ID === 'string' ? process.env.MDX_TEST_CLIENT_ID.trim() : '',
+      client_secret: typeof process.env.MDX_TEST_CLIENT_SECRET === 'string' ? process.env.MDX_TEST_CLIENT_SECRET.trim() : '',
     };
 
     assert.ok(credentials.username, 'MDX_TEST_USERNAME is required.');
     assert.ok(credentials.password, 'MDX_TEST_PASSWORD is required.');
-    assert.ok(credentials.clientId, 'MDX_TEST_CLIENT_ID is required.');
-    assert.ok(credentials.clientSecret, 'MDX_TEST_CLIENT_SECRET is required.');
+    assert.ok(credentials.client_id, 'MDX_TEST_CLIENT_ID is required.');
+    assert.ok(credentials.client_secret, 'MDX_TEST_CLIENT_SECRET is required.');
 
     if (verbose) {
       process.stdout.write('[auth-test] Credential source: environment variables (runner-provided).\n');

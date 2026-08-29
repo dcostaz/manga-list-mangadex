@@ -8,7 +8,7 @@
  * Plan-2026Q3-unified-plugin-system.md and a minor-version bump.
  */
 
-const PLUGIN_CONTRACT_VERSION = '1.0.0';
+const PLUGIN_CONTRACT_VERSION = '2.0.0';
 const PLUGIN_SETTINGS_CONTRACT_VERSION = '1.0.0';
 
 // ---------------------------------------------------------------------------

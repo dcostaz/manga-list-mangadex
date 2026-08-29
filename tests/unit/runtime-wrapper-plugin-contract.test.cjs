@@ -97,8 +97,8 @@ async function createWrapper(httpClient, context) {
   await wrapper.setCredentials({
     username: 'demo',
     password: 'secret',
-    clientId: 'client-id',
-    clientSecret: 'client-secret',
+    client_id: 'client-id',
+    client_secret: 'client-secret',
   });
 
   return wrapper;
@@ -107,6 +107,19 @@ async function createWrapper(httpClient, context) {
 const tokenPostHandler = () => ({
   status: 200,
   data: { access_token: 'contract-access', refresh_token: 'contract-refresh' },
+});
+
+// ---------------------------------------------------------------------------
+// capabilities getter — parity with plugin-package.json. No prior test caught this: the wrapper's
+// own `get capabilities()` drifted from the manifest (missing plugin.live) for a real stretch of
+// this repo's history before Plan-2026Q3-mangadex-capability-vocabulary Phase 4 fixed it.
+// ---------------------------------------------------------------------------
+
+test('capabilities getter matches plugin-package.json exactly', () => {
+  const manifest = require(path.join(__dirname, '..', '..', 'src', 'runtime', 'apiwrappers', 'reg-mangadex', 'plugin-package.json'));
+  const instance = Object.create(MangaDexAPIWrapper.prototype);
+
+  assert.deepEqual([...instance.capabilities].sort(), [...manifest.capabilities].sort());
 });
 
 // ---------------------------------------------------------------------------
@@ -290,6 +303,64 @@ test('syncEnrichment - returns null when neither pluginEntryId nor trackerId is 
   const contribution = await wrapper.syncEnrichment({});
 
   assert.equal(contribution, null);
+});
+
+// ---------------------------------------------------------------------------
+// enrich() — host-capability-contract.md §2.1's array-shaped enrich dispatch method, looping
+// over the existing single-entry buildLinkContribution() above (unchanged, still used directly
+// by syncEnrichment()). Array in, array out, per-entry failure -- never a whole-batch throw.
+// ---------------------------------------------------------------------------
+
+test('enrich([ids]) wraps buildLinkContribution per id, array in/out', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = tokenPostHandler;
+  httpHooks.getHandler = (url) => {
+    const value = String(url);
+    if (value.includes('/manga/series-42')) {
+      return {
+        status: 200,
+        data: { data: { id: 'series-42', attributes: { title: { en: 'Chainsaw Man' } }, relationships: [] }, included: [] },
+      };
+    }
+    return { status: 200, data: { data: [] } };
+  };
+
+  const wrapper = await createWrapper(client, context);
+  const results = await wrapper.enrich(['series-42']);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].pluginEntryId, 'series-42');
+  assert.equal(results[0].success, true);
+  assert.equal(results[0].contribution.displayTitle, 'Chainsaw Man');
+});
+
+test('enrich([ids]) reports per-entry failure for a not-found series, not a whole-batch throw', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+
+  httpHooks.postHandler = tokenPostHandler;
+  httpHooks.getHandler = (url) => {
+    const value = String(url);
+    if (value.includes('/manga/series-found')) {
+      return {
+        status: 200,
+        data: { data: { id: 'series-found', attributes: { title: { en: 'Found Series' } }, relationships: [] }, included: [] },
+      };
+    }
+    return { status: 200, data: {} };
+  };
+
+  const wrapper = await createWrapper(client, context);
+  const results = await wrapper.enrich(['series-found', 'series-missing']);
+
+  assert.equal(results.length, 2);
+  assert.equal(results[0].success, true);
+  assert.equal(results[0].pluginEntryId, 'series-found');
+  assert.equal(results[1].success, false);
+  assert.equal(results[1].pluginEntryId, 'series-missing');
+  assert.equal(typeof results[1].error, 'string');
 });
 
 // ---------------------------------------------------------------------------

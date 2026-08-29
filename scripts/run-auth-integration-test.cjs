@@ -36,19 +36,19 @@ async function promptForCredentials() {
     output.muted = false;
     process.stdout.write('\n');
 
-    const clientId = (await rl.question('MangaDex client ID: ')).trim();
+    const client_id = (await rl.question('MangaDex client ID: ')).trim();
 
     process.stdout.write('MangaDex client secret: ');
     output.muted = true;
-    const clientSecret = (await rl.question('')).trim();
+    const client_secret = (await rl.question('')).trim();
     output.muted = false;
     process.stdout.write('\n');
 
     return {
       username,
       password,
-      clientId,
-      clientSecret,
+      client_id,
+      client_secret,
     };
   } finally {
     rl.close();
@@ -67,14 +67,14 @@ async function run() {
   let password = typeof process.env.MDX_TEST_PASSWORD === 'string'
     ? process.env.MDX_TEST_PASSWORD.trim()
     : '';
-  let clientId = typeof process.env.MDX_TEST_CLIENT_ID === 'string'
+  let client_id = typeof process.env.MDX_TEST_CLIENT_ID === 'string'
     ? process.env.MDX_TEST_CLIENT_ID.trim()
     : '';
-  let clientSecret = typeof process.env.MDX_TEST_CLIENT_SECRET === 'string'
+  let client_secret = typeof process.env.MDX_TEST_CLIENT_SECRET === 'string'
     ? process.env.MDX_TEST_CLIENT_SECRET.trim()
     : '';
 
-  if (!username || !password || !clientId || !clientSecret) {
+  if (!username || !password || !client_id || !client_secret) {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       console.error('No interactive terminal detected. Set MDX_TEST_USERNAME, MDX_TEST_PASSWORD, MDX_TEST_CLIENT_ID, and MDX_TEST_CLIENT_SECRET and retry.');
       process.exit(1);
@@ -83,11 +83,11 @@ async function run() {
     const prompted = await promptForCredentials();
     username = prompted.username;
     password = prompted.password;
-    clientId = prompted.clientId;
-    clientSecret = prompted.clientSecret;
+    client_id = prompted.client_id;
+    client_secret = prompted.client_secret;
   }
 
-  if (!username || !password || !clientId || !clientSecret) {
+  if (!username || !password || !client_id || !client_secret) {
     console.error('Username, password, client ID, and client secret are required.');
     process.exit(1);
   }
@@ -106,8 +106,8 @@ async function run() {
         ENABLE_REAL_AUTH_TEST: '1',
         MDX_TEST_USERNAME: username,
         MDX_TEST_PASSWORD: password,
-        MDX_TEST_CLIENT_ID: clientId,
-        MDX_TEST_CLIENT_SECRET: clientSecret,
+        MDX_TEST_CLIENT_ID: client_id,
+        MDX_TEST_CLIENT_SECRET: client_secret,
       },
     },
   );

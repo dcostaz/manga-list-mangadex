@@ -1,6 +1,5 @@
 'use strict';
 
-const fs = require('fs').promises;
 const path = require('path');
 const MangaDexAPISettings = require(path.join(__dirname, 'api-settings-mangadex.cjs'));
 
@@ -240,7 +239,7 @@ class MangaDexAPIWrapper {
   static get pluginName() { return SERVICE_NAME; }
   get pluginName() { return SERVICE_NAME; }
   get pluginType() { return Object.freeze(['tracker']); }
-  get capabilities() { return Object.freeze(['tracker.search', 'tracker.sync', 'tracker.cover', 'localtracker.enrich']); }
+  get capabilities() { return Object.freeze(['credential', 'search.query', 'search.lookup', 'enrich', 'enrich.cover', 'sync.pull', 'sync.push', 'sync.list', 'subscribe.add', 'subscribe.remove', 'plugin.live']); }
 
   /** Credential fields the host renders in the plugin credential form. */
   get credentialSchema() {
@@ -1739,68 +1738,81 @@ class MangaDexAPIWrapper {
   }
 
   /**
+   * host-capability-contract.md §2's subscribe.add mapping — one entry's worth of the array-shaped
+   * subscribe() below. Follows the manga (always, idempotent per MangaDex's own OpenAPI spec —
+   * POST /manga/{id}/follow documents only 200/404, no conflict code for an already-followed
+   * manga), then optionally sets status. `context.chapter`/`context.rating` from the pre-migration
+   * signature are dropped, not carried forward — confirmed dead in the old implementation, never
+   * read from the context object.
    * @param {string} pluginEntryId
-   * @param {object | null} [context]
-   * @param {string | null} [context.readingStatus]
-   * @param {number} [context.chapter]
-   * @param {number} [context.volume]
-   * @param {number} [context.rating]
-   * @returns {Promise<void>}
+   * @param {string | null} [status]
+   * @returns {Promise<{ pluginEntryId: string, success: boolean, mode?: string, listId?: string | null, error?: string }>}
+   * @private
    */
-  async subscribe(pluginEntryId, context) {
-    const seriesId = pluginEntryId;
-    const status = context && context.readingStatus ? context.readingStatus : null;
+  async _subscribeOne(pluginEntryId, status = null) {
+    try {
+      if (!pluginEntryId) {
+        return { pluginEntryId, success: false, error: '(subscribe) pluginEntryId is required' };
+      }
 
-    if (!seriesId) {
-      throw new Error('(subscribe) pluginEntryId is required');
+      const seriesId = pluginEntryId;
+      await this.getToken();
+
+      const followEndpoint = this._resolveEndpoint('api.endpoints.follow.template', {
+        id: String(seriesId),
+      });
+      if (!followEndpoint) {
+        return { pluginEntryId, success: false, error: '(subscribe) Missing follow endpoint config' };
+      }
+
+      if (!this.httpClient || typeof this.httpClient.post !== 'function') {
+        return { pluginEntryId, success: false, error: '(subscribe) HTTP client post method is not configured' };
+      }
+
+      await this.httpClient.post(followEndpoint, {}, {
+        headers: { Authorization: `Bearer ${this.bearerToken}` },
+      });
+
+      if (!status || typeof status !== 'string') {
+        return { pluginEntryId, success: true, mode: 'subscribed', listId: null };
+      }
+
+      const map = {
+        READING: 'reading',
+        COMPLETED: 'completed',
+        PLAN_TO_READ: 'plan_to_read',
+        ON_HOLD: 'on_hold',
+        DROPPED: 'dropped',
+        RE_READING: 're_reading',
+      };
+
+      const mappedStatus = map[status] || 'reading';
+      // Reuses the raw API layer's own updateStatus() (POST + cache write) rather than
+      // duplicating it here — same reuse the pre-migration pushProgress() already did.
+      await this.updateStatus(seriesId, mappedStatus);
+
+      return { pluginEntryId, success: true, mode: 'subscribed', listId: null };
+    } catch (error) {
+      return { pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) };
     }
+  }
 
-    await this.getToken();
-
-    const followEndpoint = this._resolveEndpoint('api.endpoints.follow.template', {
-      id: String(seriesId),
-    });
-    const statusEndpoint = this._resolveEndpoint('api.endpoints.status.template', {
-      id: String(seriesId),
-    });
-    if (!followEndpoint || !statusEndpoint) {
-      throw new Error('(subscribe) Missing follow or status endpoint config');
+  /**
+   * host-capability-contract.md §2.1 — subscribe.add's array-shaped subscribe(). Called on every
+   * relevant Bookmark status edit under the new contract, not just the initial subscription
+   * (status is a Subscribing-domain fact — §5.1 — not bundled into sync.push's pushProgress
+   * anymore). Loops internally: MangaDex's follow/status endpoints are per-manga only, no bulk
+   * equivalent exists. Array in, array out, per-entry failure — never a whole-batch throw.
+   * @param {Array<{ pluginEntryId: string, status?: string | null }>} entries
+   * @returns {Promise<Array<{ pluginEntryId: string, success: boolean, mode?: string, listId?: string | null, error?: string }>>}
+   */
+  async subscribe(entries) {
+    const list = Array.isArray(entries) ? entries : [];
+    const results = [];
+    for (const entry of list) {
+      results.push(await this._subscribeOne(entry && entry.pluginEntryId, entry ? entry.status : null));
     }
-
-    if (!this.httpClient || typeof this.httpClient.post !== 'function') {
-      throw new Error('(subscribe) HTTP client post method is not configured');
-    }
-
-    await this.httpClient.post(followEndpoint, {}, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
-    });
-
-    if (!status || typeof status !== 'string') {
-      return { success: true, mode: 'subscribed', listId: null };
-    }
-
-    const map = {
-      READING: 'reading',
-      COMPLETED: 'completed',
-      PLAN_TO_READ: 'plan_to_read',
-      ON_HOLD: 'on_hold',
-      DROPPED: 'dropped',
-      RE_READING: 're_reading',
-    };
-
-    const mappedStatus = map[status] || 'reading';
-    await this.httpClient.post(statusEndpoint, { status: mappedStatus }, {
-      headers: {
-        Authorization: `Bearer ${this.bearerToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (this._context && this._context.cache) {
-      await this._context.cache.setValue(`mangadex_readingStatus_${seriesId}`, mappedStatus, 60 * 60, { userScoped: true });
-    }
-
-    return { success: true, mode: 'subscribed', listId: null };
+    return results;
   }
 
   /**
@@ -1810,82 +1822,59 @@ class MangaDexAPIWrapper {
    * change) succeeds on its own, matching `updateRating()`'s 2026-07-23 fix
    * from a hard "not supported" stub to a real `POST /rating/{mangaId}`
    * call.
+   * host-capability-contract.md §2's sync.push mapping — one entry's worth of the array-shaped
+   * pushProgress() below. Only rating is actionable: chapter/volume are accepted (they're part of
+   * the shared entry shape every sync.push-declaring plugin uses) but always ignored — no
+   * series-level chapter/volume API exists at MangaDex. Status is no longer accepted here at all —
+   * moved to subscribe.add's own subscribe() under the new contract (host-capability-contract.md
+   * §5.1: status is a Subscribing-domain fact, not a Syncing one).
    * @param {string|number} pluginEntryId
-   * @param {Record<string, unknown>} [progress]
-   * @returns {Promise<Record<string, unknown>>}
+   * @param {{ chapter?: number, volume?: number, rating?: number }} [progress]
+   * @returns {Promise<{ pluginEntryId: string|number, success: boolean, updatedFields?: string[], message?: string, error?: string }>}
+   * @private
    */
-  async pushProgress(pluginEntryId, progress = {}) {
+  async _pushProgressOne(pluginEntryId, progress = {}) {
     if (!pluginEntryId) {
-      throw new Error('(pushProgress) pluginEntryId is required');
+      return { pluginEntryId, success: false, error: '(pushProgress) pluginEntryId is required' };
     }
 
-    const hasStatus = progress && typeof progress === 'object' && typeof progress.status === 'string';
     const hasRating = progress && typeof progress === 'object' && typeof progress.rating === 'number';
-
-    if (!hasStatus && !hasRating) {
+    if (!hasRating) {
       return {
+        pluginEntryId,
         success: false,
-        error: 'MangaDex only supports status and rating updates during push sync.',
+        error: 'MangaDex only supports rating updates during push sync (status moved to subscribe.add; chapter/volume have no MangaDex API).',
       };
     }
 
-    const statusMap = {
-      READING: 'reading',
-      COMPLETED: 'completed',
-      PLAN_TO_READ: 'plan_to_read',
-      ON_HOLD: 'on_hold',
-      DROPPED: 'dropped',
-      RE_READING: 're_reading',
-    };
-
-    /** @type {string[]} */
-    const updatedFields = [];
-    /** @type {string[]} */
-    const errors = [];
-
-    if (hasStatus) {
-      const mappedStatus = statusMap[/** @type {string} */ (progress.status)];
-      if (!mappedStatus) {
-        errors.push(`Status "${progress.status}" is not supported by MangaDex`);
+    try {
+      // mangalist's own Bookmark rating scale treats 0 as "cleared"
+      // (mangalist.cjs's reset-rating flow writes user_rating: 0); MangaDex
+      // has no zero in its 1-10 range, so 0 means delete, not "rate it 0".
+      if (progress.rating === 0) {
+        await this.deleteRating(pluginEntryId);
       } else {
-        try {
-          await this.updateStatus(pluginEntryId, mappedStatus);
-          updatedFields.push('status');
-        } catch (error) {
-          errors.push(error instanceof Error ? error.message : String(error));
-        }
+        await this.updateRating(pluginEntryId, /** @type {number} */ (progress.rating));
       }
+      return { pluginEntryId, success: true, updatedFields: ['rating'], message: 'Updated rating on MangaDex' };
+    } catch (error) {
+      return { pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) };
     }
+  }
 
-    if (hasRating) {
-      try {
-        // mangalist's own Bookmark rating scale treats 0 as "cleared"
-        // (mangalist.cjs's reset-rating flow writes user_rating: 0); MangaDex
-        // has no zero in its 1-10 range, so 0 means delete, not "rate it 0".
-        if (progress.rating === 0) {
-          await this.deleteRating(pluginEntryId);
-        } else {
-          await this.updateRating(pluginEntryId, /** @type {number} */ (progress.rating));
-        }
-        updatedFields.push('rating');
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
-      }
+  /**
+   * host-capability-contract.md §2.1 — sync.push's array-shaped pushProgress(). Array in, array
+   * out, per-entry failure — never a whole-batch throw.
+   * @param {Array<{ pluginEntryId: string|number, chapter?: number, volume?: number, rating?: number }>} entries
+   * @returns {Promise<Array<{ pluginEntryId: string|number, success: boolean, updatedFields?: string[], message?: string, error?: string }>>}
+   */
+  async pushProgress(entries) {
+    const list = Array.isArray(entries) ? entries : [];
+    const results = [];
+    for (const entry of list) {
+      results.push(await this._pushProgressOne(entry && entry.pluginEntryId, entry || {}));
     }
-
-    if (updatedFields.length === 0) {
-      return {
-        success: false,
-        error: errors.join('; ') || 'No fields updated',
-      };
-    }
-
-    return {
-      success: true,
-      updatedFields,
-      message: `Updated ${updatedFields.join(' and ')} on MangaDex`,
-      ...(errors.length > 0 ? { partialErrors: errors } : {}),
-    };
+    return results;
   }
 
   /**
@@ -1973,6 +1962,30 @@ class MangaDexAPIWrapper {
     if ((this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
       await this._context.cache.deleteValue(`mangadex_readingStatus_${seriesId}`, { userScoped: true });
     }
+  }
+
+  /**
+   * host-capability-contract.md §2.1 — subscribe.remove's array-shaped unsubscribe(), a thin
+   * wrapper looping over unfollowManga() (no bulk MangaDex endpoint exists). Required, not
+   * optional: the host's real dispatch (ApiPluginHandler._performUnsubscribe()) already calls
+   * `instance.unsubscribe(...)` by that literal name — before this method existed, MangaDex had no
+   * way to actually unsubscribe through that path at all. Array in, array out, per-entry failure —
+   * never a whole-batch throw.
+   * @param {Array<string|number>} pluginEntryIds
+   * @returns {Promise<Array<{ pluginEntryId: string|number, success: boolean, error?: string }>>}
+   */
+  async unsubscribe(pluginEntryIds) {
+    const ids = Array.isArray(pluginEntryIds) ? pluginEntryIds : [];
+    const results = [];
+    for (const pluginEntryId of ids) {
+      try {
+        await this.unfollowManga(pluginEntryId);
+        results.push({ pluginEntryId, success: true });
+      } catch (error) {
+        results.push({ pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return results;
   }
 
   /**
@@ -2086,61 +2099,56 @@ class MangaDexAPIWrapper {
   }
 
   /**
-   * @param {{ mangaId?: string, fileName?: string }} metadata
-   * @param {string} savePath
-   * @returns {Promise<boolean>}
+   * host-capability-contract.md §2's enrich.cover mapping — downloadCover(coverId): Promise<Buffer>.
+   * Refactored from the pre-migration `(metadata, savePath): Promise<boolean>` shape
+   * (Plan-2026Q3-mangadex-capability-vocabulary, Phase 4): no longer writes to disk itself — the
+   * host's ImageService does that now, matching the contract's "plugin never writes to disk" rule.
+   * `coverId` is the `${mangaId}/${fileName}` bridging convention ImageService's own
+   * `_invokeProviderDownload()` constructs today — an ImageService-internal convention, not a
+   * shape this plugin invented (see `manga-list-concepts.md`'s Resolved decision 6). Throws on
+   * failure (no valid Buffer to return), matching FMD2's own already-shipped modern contract.
+   * @param {string} coverId - `${mangaId}/${fileName}`
+   * @returns {Promise<Buffer>}
    */
-  async downloadCover(metadata, savePath) {
-    const mangaId = metadata && typeof metadata === 'object' && typeof metadata.mangaId === 'string'
-      ? metadata.mangaId
-      : '';
-    const fileName = metadata && typeof metadata === 'object' && typeof metadata.fileName === 'string'
-      ? metadata.fileName
-      : '';
+  async downloadCover(coverId) {
+    const [mangaId, fileName] = typeof coverId === 'string' ? coverId.split('/') : [];
 
     if (!mangaId || !fileName) {
-      return false;
+      throw new Error('(downloadCover) coverId must be in the form "mangaId/fileName"');
     }
 
     const cacheKey = `mangadex_downloadCover_${mangaId}_${fileName}`;
     const cachedBase64 = (this._context && this._context.cache) ? await this._context.cache.getValue(cacheKey) : null;
     if (cachedBase64) {
-      await fs.mkdir(path.dirname(savePath), { recursive: true });
-      await fs.writeFile(savePath, Buffer.from(cachedBase64, 'base64'));
-      return true;
+      return Buffer.from(cachedBase64, 'base64');
     }
 
     if (!this.httpClient || typeof this.httpClient.get !== 'function') {
       throw new Error('(downloadCover) HTTP client get method is not configured');
     }
 
-    try {
-      const response = await this.httpClient.get(`https://uploads.mangadex.org/covers/${mangaId}/${fileName}`, {
-        responseType: 'arraybuffer',
-      });
+    const response = await this.httpClient.get(`https://uploads.mangadex.org/covers/${mangaId}/${fileName}`, {
+      responseType: 'arraybuffer',
+    });
 
-      const body = response && typeof response === 'object' ? response.data : null;
-      const buffer = Buffer.isBuffer(body)
-        ? body
-        : typeof body === 'string'
-          ? Buffer.from(body, 'binary')
-          : body && body.buffer
-            ? Buffer.from(body.buffer)
-            : Buffer.alloc(0);
+    const body = response && typeof response === 'object' ? response.data : null;
+    const buffer = Buffer.isBuffer(body)
+      ? body
+      : typeof body === 'string'
+        ? Buffer.from(body, 'binary')
+        : body && body.buffer
+          ? Buffer.from(body.buffer)
+          : Buffer.alloc(0);
 
-      if (buffer.length === 0) {
-        return false;
-      }
-
-      await fs.mkdir(path.dirname(savePath), { recursive: true });
-      await fs.writeFile(savePath, buffer);
-      if (this._context && this._context.cache) {
-        await this._context.cache.setValue(cacheKey, buffer.toString('base64'), 24 * 60 * 60);
-      }
-      return true;
-    } catch (error) {
-      return false;
+    if (buffer.length === 0) {
+      throw new Error('(downloadCover) Empty response body');
     }
+
+    if (this._context && this._context.cache) {
+      await this._context.cache.setValue(cacheKey, buffer.toString('base64'), 24 * 60 * 60);
+    }
+
+    return buffer;
   }
 
   /**
@@ -2171,6 +2179,11 @@ class MangaDexAPIWrapper {
       thumbnailUrl: `https://uploads.mangadex.org/covers/${context.mangaId}/${fileName}.256.jpg`,
       canonicalUrl: context.canonicalUrl,
       dimensions: hasDimensions ? { width, height } : undefined,
+      // host-capability-contract.md §2's enrich.cover mapping — additive only, matches
+      // downloadCover(coverId)'s own `${mangaId}/${fileName}` bridging convention
+      // (Plan-2026Q3-mangadex-capability-vocabulary, Phase 4). Nothing downstream depends on a
+      // specific searchCovers() result shape today, so this is a pure addition, not a restructure.
+      coverId: `${context.mangaId}/${fileName}`,
       tracker: {
         id: context.mangaId,
         url: `https://uploads.mangadex.org/covers/${context.mangaId}/${fileName}`,
@@ -2678,6 +2691,32 @@ class MangaDexAPIWrapper {
     const pluginEntryId = localTrackerEntry && (localTrackerEntry.pluginEntryId || localTrackerEntry.trackerId);
     if (!pluginEntryId) return null;
     return this.buildLinkContribution(pluginEntryId);
+  }
+
+  /**
+   * host-capability-contract.md §2.1 — enrich's array-shaped dispatch method. Loops over the
+   * existing single-entry buildLinkContribution() (unchanged, still used directly by
+   * syncEnrichment() above) — no bulk MangaDex endpoint exists for this. Array in, array out,
+   * per-entry failure — never a whole-batch throw. search.lookup stays satisfied by
+   * buildLinkContribution() directly (single per its own definition, no array wrapper needed —
+   * nothing dispatches search.lookup yet, so adding one now would be speculative).
+   * @param {string[]} pluginEntryIds
+   * @returns {Promise<Array<{ pluginEntryId: string, success: boolean, contribution?: import('../../../../types/plugintypedefs').PluginLinkContribution, error?: string }>>}
+   */
+  async enrich(pluginEntryIds) {
+    const ids = Array.isArray(pluginEntryIds) ? pluginEntryIds : [];
+    const results = [];
+    for (const pluginEntryId of ids) {
+      try {
+        const contribution = await this.buildLinkContribution(pluginEntryId);
+        results.push(contribution
+          ? { pluginEntryId, success: true, contribution }
+          : { pluginEntryId, success: false, error: 'No contribution available' });
+      } catch (error) {
+        results.push({ pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return results;
   }
 }
 
