@@ -19,6 +19,10 @@
       "DROPPED":      "dropped",
       "RE_READING":   "reading"
     },
+    "progressAxes": {
+      "pull": ["rating"],
+      "push": ["rating"]
+    },
     "supportedActions": []
   }
 }
