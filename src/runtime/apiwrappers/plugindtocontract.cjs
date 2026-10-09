@@ -10,7 +10,7 @@
  * seven mirrors in total.
  *
  * 3.0.0 — the pre-register flat-tag vocabulary is deleted
- * (`docs/plans/Plan-2026Q4-pre-register-vocabulary-removal.md`). There is no synonym expansion and
+ * (`docs/history/Plan-2026Q4-pre-register-vocabulary-removal.md`). There is no synonym expansion and
  * no legacy path: a plugin declares the strings below or it does not load.
  */
 
