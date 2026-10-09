@@ -239,7 +239,7 @@ class MangaDexAPIWrapper {
   static get pluginName() { return SERVICE_NAME; }
   get pluginName() { return SERVICE_NAME; }
   get pluginType() { return Object.freeze(['tracker']); }
-  get capabilities() { return Object.freeze(['credential', 'search.query', 'search.lookup', 'enrich', 'enrich.cover', 'sync.pull', 'sync.push', 'sync.list', 'subscribe.add', 'subscribe.remove', 'plugin.live']); }
+  get capabilities() { return Object.freeze(['credential', 'search.query', 'search.lookup', 'enrich', 'enrich.cover', 'sync.pull', 'sync.push', 'sync.list', 'subscribe.add', 'subscribe.remove', 'watch.entry', 'watch.list', 'watch.summary']); }
 
   /** Credential fields the host renders in the plugin credential form. */
   get credentialSchema() {
@@ -2558,7 +2558,7 @@ class MangaDexAPIWrapper {
   }
 
   // ---------------------------------------------------------------------------
-  // adapter.enrich methods
+  // enrich methods
   // ---------------------------------------------------------------------------
 
   /**
@@ -2596,7 +2596,7 @@ class MangaDexAPIWrapper {
     return 'unknown';
   }
 
-  // ── plugin.live ──
+  // ── watch.entry ──
 
   /**
    * @param {string} pluginEntryId
@@ -2642,6 +2642,62 @@ class MangaDexAPIWrapper {
         ],
       },
     };
+  }
+
+  // ── watch.summary ──
+
+  /**
+   * Current volatile state for a host-named set of already-linked entries, in one batched call
+   * (host-capability-contract.md §2.1: array in, array out, per-entry failure, never a
+   * whole-batch throw). Reuses `getMangaByIds()` -- the same batched manga-detail fetch
+   * `getReadingList()` already uses to backfill title data -- rather than one `queryLive()`
+   * call per id.
+   *
+   * - **`success: true` with `linkState: 'error'`** -- this plugin ANSWERED, and the answer is
+   *   "this id is no longer a known MangaDex manga" (removed/deleted). Mirrors FMD2's own
+   *   `summarizeEntries` convention for the same case, and `queryLive()`'s `not_found` status
+   *   for a single entry.
+   * - **`success: false`** -- this plugin could NOT answer: the API call itself failed
+   *   (network, auth). The host keeps each entry's stored badge state.
+   *
+   * @param {string[]} pluginEntryIds
+   * @returns {Promise<Array<{ pluginEntryId: string, success: boolean, summary?: import('../../../../types/plugintypedefs').PluginCardSummary, error?: string }>>}
+   */
+  async summarizeEntries(pluginEntryIds) {
+    if (!Array.isArray(pluginEntryIds) || pluginEntryIds.length === 0) return [];
+
+    const ids = pluginEntryIds.map(String);
+    let rows;
+    try {
+      rows = await this.getMangaByIds(ids);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Per-entry failure rather than a thrown batch: one failed call means every requested id
+      // is unanswerable, reported as such so the host keeps their stored state.
+      return ids.map((id) => ({ pluginEntryId: id, success: false, error: message }));
+    }
+
+    /** @type {Map<string, string>} */
+    const statusById = new Map();
+    for (const manga of rows) {
+      if (!manga || typeof manga !== 'object' || typeof manga.id !== 'string') continue;
+      const status = manga.attributes && typeof manga.attributes === 'object' && typeof manga.attributes.status === 'string'
+        ? manga.attributes.status
+        : null;
+      if (status) statusById.set(manga.id, status);
+    }
+
+    return ids.map((id) => {
+      const status = statusById.get(id);
+      if (!status) {
+        return { pluginEntryId: id, success: true, summary: { linkState: 'error', label: `Entry not found: ${id}` } };
+      }
+      return {
+        pluginEntryId: id,
+        success: true,
+        summary: { linkState: 'active', label: status.charAt(0).toUpperCase() + status.slice(1) },
+      };
+    });
   }
 
   /**
