@@ -49,7 +49,7 @@ export interface PluginAPISettingsLike {
 }
 
 // ---------------------------------------------------------------------------
-// syncOptions types (§4.1 manifest — tracker.sync plugins)
+// syncOptions types (§4.1 manifest — sync.pull / sync.push / subscribe.add plugins)
 // ---------------------------------------------------------------------------
 
 export interface PluginSyncOptions {
@@ -88,7 +88,7 @@ export interface PluginAPILike {
 }
 
 // ---------------------------------------------------------------------------
-// tracker.search (§4.2)
+// search.query / search.lookup (§2)
 // ---------------------------------------------------------------------------
 
 export interface PluginSearchOptions {
@@ -108,7 +108,7 @@ export interface PluginSearchResult {
 }
 
 // ---------------------------------------------------------------------------
-// tracker.sync (§4.2)
+// sync.pull / sync.push / sync.list / subscribe.add / subscribe.remove (§2)
 // ---------------------------------------------------------------------------
 
 export interface PluginProgressDTO {
@@ -143,7 +143,7 @@ export interface PluginSubscribeContext {
 }
 
 // ---------------------------------------------------------------------------
-// tracker.cover (§4.2)
+// enrich.cover (§2)
 // ---------------------------------------------------------------------------
 
 export interface PluginCoverSearchOptions {
@@ -161,7 +161,7 @@ export interface PluginCoverResult {
 }
 
 // ---------------------------------------------------------------------------
-// adapter.enrich (§4.2)
+// enrich (§2)
 // ---------------------------------------------------------------------------
 
 export interface PluginMatchOptions {
@@ -203,37 +203,10 @@ export interface PluginLinkContribution {
 }
 
 // ---------------------------------------------------------------------------
-// adapter.import / adapter.discover (§4.2)
+// Own-data reads (§5.4) — listEntries / getEntry. NOT capabilities.
 // ---------------------------------------------------------------------------
 
-export interface PluginImportOptions {
-  credential?: PluginCredential | null;
-  [key: string]: unknown;
-}
-
-export interface PluginImportResult {
-  importedCount: number;
-  skippedCount?: number;
-  errors?: string[];
-}
-
-export interface PluginDiscoveryOptions {
-  limit?: number;
-  credential?: PluginCredential | null;
-}
-
-export interface PluginDiscoveryResult {
-  pluginEntryId: string;
-  title: string;
-  altTitles?: string[];
-  coverUrl?: string;
-}
-
-// ---------------------------------------------------------------------------
-// workspace.list + workspace.get (§4.2)
-// ---------------------------------------------------------------------------
-
-/** All workspace.list plugins MUST apply includeIds/excludeIds server-side before pagination. */
+/** Every plugin serving `own-list` MUST apply includeIds/excludeIds server-side before pagination. */
 export interface PluginEntryFilters {
   search?: string;
   includeIds?: string[];    // restrict results to these plugin_entry_ids
@@ -289,7 +262,7 @@ export interface PluginWorkspaceEntry {
 // DetailLayoutSection types (§4.2a — manifest-declared workspace detail panel)
 // ---------------------------------------------------------------------------
 
-export type DetailLayoutSectionType = 'stat-grid' | 'item-list' | 'live-embed';
+export type DetailLayoutSectionType = 'stat-grid' | 'item-list';
 
 export interface StatGridSection {
   sectionId: string;
@@ -303,17 +276,9 @@ export interface ItemListSection {
   type: 'item-list';
   label: string;
   itemsField: string;
-  actions?: Array<{ actionId: string; icon: string; label: string }>;
 }
 
-export interface LiveEmbedSection {
-  sectionId: string;
-  type: 'live-embed';
-  label: string;
-  // Only valid when plugin also declares plugin.live; loader rejects otherwise.
-}
-
-export type DetailLayoutSection = StatGridSection | ItemListSection | LiveEmbedSection;
+export type DetailLayoutSection = StatGridSection | ItemListSection;
 
 // ---------------------------------------------------------------------------
 // PluginLiveData + section types (§4.3b)
@@ -324,8 +289,7 @@ export type PluginLiveSectionType =
   | 'progress'
   | 'item-list'
   | 'link-list'
-  | 'text'
-  | 'action-list';
+  | 'text';
 
 export interface PluginLiveStatGridSection {
   type: 'stat-grid';
@@ -358,19 +322,12 @@ export interface PluginLiveTextSection {
   content: string;
 }
 
-export interface PluginLiveActionListSection {
-  type: 'action-list';
-  label?: string;
-  actions: PluginContextAction[];
-}
-
 export type PluginLiveSection =
   | PluginLiveStatGridSection
   | PluginLiveProgressSection
   | PluginLiveItemListSection
   | PluginLiveLinkListSection
-  | PluginLiveTextSection
-  | PluginLiveActionListSection;
+  | PluginLiveTextSection;
 
 export interface PluginLiveData {
   pluginEntryId: string;
@@ -389,30 +346,54 @@ export type PluginLiveQueryResult =
   | { status: 'error';   message: string; retryable: boolean };
 
 // ---------------------------------------------------------------------------
-// PluginContextAction + PluginActionResult (§4.3c)
-// ---------------------------------------------------------------------------
-
-export interface PluginContextAction {
-  actionId: string;
-  label: string;
-  icon?: string;
-  disabled?: boolean;
-  disabledReason?: string;
-}
-
-export type PluginActionResult =
-  | { status: 'ok';      message?: string }
-  | { status: 'pending'; message?: string }
-  | { status: 'error';   message: string; retryable: boolean };
-
-// ---------------------------------------------------------------------------
 // PluginCardSummary (§4.3d)
 // ---------------------------------------------------------------------------
 
 export interface PluginCardSummary {
   linkState: 'linked' | 'active' | 'error' | 'offline';
   label?: string;
-  contextActions?: PluginContextAction[];
+}
+
+// ---------------------------------------------------------------------------
+// PluginReadingListEntry (§2)
+//
+// What getReadingList() returns, one element per entry on the source's list. ONE method serves
+// TWO offers -- `sync.list` (Syncing, user-side credential, reconciled against that user's
+// Bookmarks) and `watch.list` (Watching, system-side credential, writes each Reference's volatile
+// snapshot). The shape is identical for both; only the gate and the credential side differ.
+//
+// Every field but `pluginEntryId` is nullable. Return only what the source actually carries --
+// `null` is the contracted answer for "this source has no such thing", never an error and never
+// an omitted key.
+// ---------------------------------------------------------------------------
+
+export interface PluginReadingListEntry {
+  /** The source's own id, matching what a Reference stores. */
+  pluginEntryId: string;
+  /** The source's display title, for drift detection. */
+  title: string | null;
+  /** The entry's URL at the source; a mismatch resolves to a `warning` link state. */
+  canonicalUrl: string | null;
+  /**
+   * The source's OWN reading-status token, mapped host-side through
+   * `syncOptions.statusVocabulary`. `null` for a source with no user reading status at all --
+   * a series-level publication status is not this field.
+   */
+  status: string | null;
+  /** Only meaningful where `syncOptions.progressAxes.pull` includes `chapter`. */
+  chapter: number | null;
+  /** Only meaningful where `progressAxes.pull` includes `rating`. */
+  rating: number | null;
+  /** Accepted here, but NOT a §2.2 progress axis yet -- the host does not reconcile on it. */
+  volume: number | null;
+  /** Which of the source's lists this entry sits on, where it has more than one. */
+  listId: number | null;
+  /** Source-side ordering hint, if any. */
+  priority: number | null;
+  /** ISO timestamp of the source's own last change to this entry. */
+  lastUpdated: string | null;
+  /** Optional per-entry comparison the plugin computed from `options.hostProgressByEntryId`. */
+  comparison: object | null;
 }
 
 // ---------------------------------------------------------------------------
