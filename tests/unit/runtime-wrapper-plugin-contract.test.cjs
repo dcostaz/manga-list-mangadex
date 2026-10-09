@@ -123,7 +123,7 @@ test('capabilities getter matches plugin-package.json exactly', () => {
 });
 
 // ---------------------------------------------------------------------------
-// findMatches() — localtracker.enrich
+// findMatches() — enrich
 // ---------------------------------------------------------------------------
 
 test('findMatches - normalizes search() results to PluginMatchCandidate shape', async () => {
@@ -190,7 +190,7 @@ test('findMatches - fails open to [] when search() throws', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildLinkContribution() / syncEnrichment() — localtracker.enrich
+// buildLinkContribution() / syncEnrichment() — enrich
 // ---------------------------------------------------------------------------
 
 test('buildLinkContribution - full shape with sourceLinks and mapped seriesStatus', async () => {
@@ -364,7 +364,7 @@ test('enrich([ids]) reports per-entry failure for a not-found series, not a whol
 });
 
 // ---------------------------------------------------------------------------
-// pullProgress() — tracker.sync
+// pullProgress() — sync.pull
 // ---------------------------------------------------------------------------
 
 test('pullProgress - maps MangaDex reading status to the app ReadingStatus enum', async () => {
