@@ -4,10 +4,13 @@
   "pluginContractVersion": "3.0.0",
   "hostApiVersion": "1.0.0",
   "iconPath": "images/mangadex-icon.svg",
-  "capabilities": ["credential", "search.query", "search.lookup", "enrich", "enrich.cover", "sync.pull", "sync.push", "sync.list", "subscribe.add", "subscribe.remove", "watch.entry", "watch.list", "watch.summary"],
+  "capabilities": ["credential", "search.query", "search.lookup", "enrich", "enrich.cover", "sync.pull", "sync.push", "sync.list", "subscribe.add", "subscribe.remove", "watch.entry", "watch.list", "watch.summary", "retrieve.chapterList", "retrieve.chapterPages"],
   "entrypoints": {
     "pluginModule": "apiwrappers/reg-mangadex/plugin-module.cjs",
     "settingsFile": "apiwrappers/reg-mangadex/mangadex-api-settings.json"
+  },
+  "retrieveOptions": {
+    "requiresCredential": false
   },
   "syncOptions": {
     "searchRequiresAuth": true,
