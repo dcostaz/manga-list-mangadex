@@ -215,6 +215,46 @@
       "category": "network",
       "order": 276
     },
+    "api.endpoints.feed.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/manga/${id}/feed",
+      "description": "Chapter list endpoint template (retrieve.chapterList)",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 278
+    },
+    "api.endpoints.feed.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Minimum delay between chapter-feed pagination requests (milliseconds)",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "performance",
+      "order": 880
+    },
+    "api.endpoints.atHomeServer.template": {
+      "type": "string",
+      "required": true,
+      "default": "${baseUrl}/at-home/server/${id}",
+      "description": "At-home server resolution endpoint template (retrieve.chapterPages)",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "network",
+      "order": 280
+    },
+    "api.endpoints.atHomeServer.throttle": {
+      "type": "number",
+      "required": false,
+      "default": 1000,
+      "description": "Minimum delay between at-home server resolution requests (milliseconds)",
+      "readOnly": true,
+      "isBasic": false,
+      "category": "performance",
+      "order": 890
+    },
     "statusMapping.READING": {
       "type": "string",
       "required": true,

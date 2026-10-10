@@ -71,6 +71,32 @@ function extractHtmlErrorMessage(html) {
 }
 
 /**
+ * A human-readable chapter label from a Chapter resource's `attributes` — Plan-2026Q4-
+ * retrieving-ingesting, Phase 7. `volume`/`chapter`/`title` are all independently nullable per
+ * the real API schema (`ChapterAttributes`); a chapter with no `chapter` number at all (a
+ * MangaDex "oneshot") still needs a label.
+ * @param {Record<string, unknown>} attributes
+ * @returns {string}
+ */
+function buildChapterLabel(attributes) {
+  const volume = attributes && typeof attributes.volume === 'string' && attributes.volume ? attributes.volume : null;
+  const chapter = attributes && typeof attributes.chapter === 'string' && attributes.chapter ? attributes.chapter : null;
+  const title = attributes && typeof attributes.title === 'string' && attributes.title.trim() ? attributes.title.trim() : null;
+
+  const parts = [];
+  if (volume) {
+    parts.push(`Vol. ${volume}`);
+  }
+  parts.push(chapter ? `Ch. ${chapter}` : 'Oneshot');
+
+  let label = parts.join(' ');
+  if (title) {
+    label += ` - ${title}`;
+  }
+  return label;
+}
+
+/**
  * @returns {TrackerHttpClientLike}
  */
 function createFallbackHttpClient() {
@@ -239,7 +265,7 @@ class MangaDexAPIWrapper {
   static get pluginName() { return SERVICE_NAME; }
   get pluginName() { return SERVICE_NAME; }
   get pluginType() { return Object.freeze(['tracker']); }
-  get capabilities() { return Object.freeze(['credential', 'search.query', 'search.lookup', 'enrich', 'enrich.cover', 'sync.pull', 'sync.push', 'sync.list', 'subscribe.add', 'subscribe.remove', 'watch.entry', 'watch.list', 'watch.summary']); }
+  get capabilities() { return Object.freeze(['credential', 'search.query', 'search.lookup', 'enrich', 'enrich.cover', 'sync.pull', 'sync.push', 'sync.list', 'subscribe.add', 'subscribe.remove', 'watch.entry', 'watch.list', 'watch.summary', 'retrieve.chapterList', 'retrieve.chapterPages']); }
 
   /** Credential fields the host renders in the plugin credential form. */
   get credentialSchema() {
@@ -2146,6 +2172,251 @@ class MangaDexAPIWrapper {
 
     if (this._context && this._context.cache) {
       await this._context.cache.setValue(cacheKey, buffer.toString('base64'), 24 * 60 * 60);
+    }
+
+    return buffer;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Retrieving (Plan-2026Q4-retrieving-ingesting, Phase 7) — retrieve.chapterList /
+  // retrieve.chapterPages. Both real endpoints declare `security: []` in the live OpenAPI
+  // spec (confirmed directly, not assumed) — no `getToken()` call anywhere below, matching
+  // `retrieveOptions.requiresCredential: false` in plugin-package.json. This also rules out
+  // reusing `getMangaById()` as-is for `availableLanguages`: that method calls `getToken()`
+  // unconditionally even though `GET /manga/{id}` is itself `security: []` too, which would
+  // throw for a caller with no credential configured at all (the untracked-preview case).
+  // `_getAvailableLanguagesAnonymous()` below shares `getMangaById()`'s own cache key (so a
+  // prior authenticated call still gets reused for free) but never follows its network path.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * `retrieve.chapterList`'s `listChapters()` (host-capability-contract.md §2/§2.3) —
+   * `GET /manga/{id}/feed`, paginated at the real documented `limit` max of 500 via the same
+   * chunked-pagination shape `getMangaByIds()` already establishes for a different endpoint.
+   * A chapter with a non-null `externalUrl` links to a source outside MangaDex and has no
+   * `data[]`/`dataSaver[]` at all — excluded here, rather than listed and failing later in
+   * `listPages()`. No `language` supplied by the caller defaults to `'en'` (D4's own stated
+   * default) — the host-side `user_settings` preference this is meant to come from was decided
+   * but never wired through any phase of this plan; until it is, this plugin's own default
+   * keeps the method correct on its own.
+   * @param {string} pluginEntryId - manga id
+   * @param {{ language?: string }} [options]
+   * @returns {Promise<{ chapters: Array<{ id: string, label: string, ordering: number, language: string }>, availableLanguages: string[] }>}
+   */
+  async listChapters(pluginEntryId, options = {}) {
+    if (!pluginEntryId) {
+      throw new Error('(listChapters) pluginEntryId is required');
+    }
+
+    const language = typeof options.language === 'string' && options.language ? options.language : 'en';
+
+    const endpoint = this._resolveEndpoint('api.endpoints.feed.template', { id: pluginEntryId });
+    if (!endpoint) {
+      throw new Error('(listChapters) Missing feed endpoint config');
+    }
+    if (!this.httpClient || typeof this.httpClient.get !== 'function') {
+      throw new Error('(listChapters) HTTP client get method is not configured');
+    }
+
+    const throttleSetting = Number(this._resolveSettingValue('api.endpoints.feed.throttle'));
+    const throttleMs = Number.isFinite(throttleSetting) && throttleSetting >= 0 ? throttleSetting : 1000;
+    const LIMIT = 500;
+
+    /** @type {Array<Record<string, unknown>>} */
+    const rows = [];
+    let offset = 0;
+    let total = Infinity;
+    while (offset < total) {
+      if (offset > 0) {
+        await new Promise((resolve) => setTimeout(resolve, throttleMs));
+      }
+
+      const response = await this.httpClient.get(endpoint, {
+        params: {
+          'translatedLanguage[]': [language],
+          limit: LIMIT,
+          offset,
+          'order[chapter]': 'asc',
+          includeFutureUpdates: '0',
+        },
+      });
+
+      const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
+        ? response.data
+        : {};
+      const data = Array.isArray(responseData.data) ? responseData.data : [];
+      rows.push(...data);
+
+      total = typeof responseData.total === 'number' ? responseData.total : rows.length;
+      offset += LIMIT;
+      if (data.length === 0) {
+        break;
+      }
+    }
+
+    const chapters = rows
+      .filter((row) => {
+        const attributes = row && typeof row === 'object' && row.attributes && typeof row.attributes === 'object'
+          ? row.attributes
+          : null;
+        return Boolean(attributes) && attributes.externalUrl == null;
+      })
+      .map((row, index) => {
+        const attributes = /** @type {Record<string, unknown>} */ (row.attributes);
+        return {
+          id: String(row.id),
+          label: buildChapterLabel(attributes),
+          ordering: index,
+          language: typeof attributes.translatedLanguage === 'string' ? attributes.translatedLanguage : language,
+        };
+      });
+
+    const availableLanguages = await this._getAvailableLanguagesAnonymous(pluginEntryId);
+
+    return { chapters, availableLanguages };
+  }
+
+  /**
+   * `attributes.availableTranslatedLanguages` off the Manga resource (confirmed real field,
+   * `GET /manga/{id}`), without ever calling `getToken()` — see the class-level comment above
+   * this section for why `getMangaById()` itself isn't safe to reuse directly here. A failure
+   * here degrades to `[]`; it's a supplementary field, never worth failing `listChapters()` over.
+   * @param {string} mangaId
+   * @returns {Promise<string[]>}
+   */
+  async _getAvailableLanguagesAnonymous(mangaId) {
+    const cacheKey = `mangadex_getMangaById_${mangaId}`;
+    try {
+      const cached = await this._getJSONCacheValue(cacheKey);
+      const cachedData = cached && typeof cached === 'object' ? cached.data : null;
+      if (cachedData && typeof cachedData === 'object' && cachedData.attributes) {
+        return this._extractAvailableLanguages(/** @type {Record<string, unknown>} */ (cachedData.attributes));
+      }
+
+      const baseUrl = this._resolveSettingValue('api.baseUrl');
+      const endpoint = `${typeof baseUrl === 'string' ? baseUrl : ''}/manga/${mangaId}`;
+      if (!endpoint.startsWith('http') || !this.httpClient || typeof this.httpClient.get !== 'function') {
+        return [];
+      }
+
+      const response = await this.httpClient.get(endpoint, { params: { 'includes[]': ['author', 'artist'] } });
+      const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
+        ? response.data
+        : {};
+      const manga = responseData.data && typeof responseData.data === 'object' ? responseData.data : null;
+      if (!manga) {
+        return [];
+      }
+
+      await this._setJSONCacheValue(cacheKey, {
+        data: manga,
+        includes: Array.isArray(responseData.included) ? responseData.included : [],
+      }, 24 * 60 * 60);
+
+      return this._extractAvailableLanguages(/** @type {Record<string, unknown>} */ (manga.attributes));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * @param {Record<string, unknown>} attributes
+   * @returns {string[]}
+   */
+  _extractAvailableLanguages(attributes) {
+    return attributes && Array.isArray(attributes.availableTranslatedLanguages)
+      ? attributes.availableTranslatedLanguages.filter((lang) => typeof lang === 'string')
+      : [];
+  }
+
+  /**
+   * The at-home server resolution shared by `listPages()` and `downloadPage()` — fetched fresh
+   * on every call, by design (the plan's own decision): the real spec documents `baseUrl` as
+   * valid "for the requested chapter only, and for 15 minutes", so trusting a value obtained at
+   * `listPages()` time for a later `downloadPage()` call isn't a safe optimization to make.
+   * @param {string} chapterId
+   * @returns {Promise<{ baseUrl: string, hash: string, data: string[] }>}
+   */
+  async _resolveAtHomeServer(chapterId) {
+    const endpoint = this._resolveEndpoint('api.endpoints.atHomeServer.template', { id: chapterId });
+    if (!endpoint) {
+      throw new Error('(_resolveAtHomeServer) Missing at-home server endpoint config');
+    }
+    if (!this.httpClient || typeof this.httpClient.get !== 'function') {
+      throw new Error('(_resolveAtHomeServer) HTTP client get method is not configured');
+    }
+
+    const response = await this.httpClient.get(endpoint);
+    const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
+      ? response.data
+      : {};
+    const baseUrl = typeof responseData.baseUrl === 'string' ? responseData.baseUrl : '';
+    const chapterPayload = responseData.chapter && typeof responseData.chapter === 'object' ? responseData.chapter : {};
+    const hash = typeof chapterPayload.hash === 'string' ? chapterPayload.hash : '';
+    const data = Array.isArray(chapterPayload.data) ? chapterPayload.data.filter((f) => typeof f === 'string') : [];
+
+    if (!baseUrl || !hash) {
+      throw new Error(`(_resolveAtHomeServer) Missing baseUrl/hash for chapter ${chapterId}`);
+    }
+
+    return { baseUrl, hash, data };
+  }
+
+  /**
+   * `retrieve.chapterPages`'s `listPages()` — metadata only, no bytes (host-capability-
+   * contract.md §2). Full quality (`chapter.data[]`), never `dataSaver[]`, per this plan's own
+   * decision. `pageNumber` is array position — already reading order, the same convention
+   * `ChapterService`'s local channel uses, so the host's own re-sort by `pageNumber` is a no-op
+   * here.
+   * @param {string} pluginEntryId - unused; chapterId alone resolves the at-home server
+   * @param {string} chapterId
+   * @returns {Promise<Array<{ pageKey: string, pageNumber: number }>>}
+   */
+  async listPages(pluginEntryId, chapterId) {
+    if (!chapterId) {
+      throw new Error('(listPages) chapterId is required');
+    }
+
+    const { data } = await this._resolveAtHomeServer(chapterId);
+    return data.map((pageKey, index) => ({ pageKey, pageNumber: index }));
+  }
+
+  /**
+   * `retrieve.chapterPages`'s `downloadPage()` — one page's bytes, on demand. Re-resolves the
+   * at-home `baseUrl`+`hash` fresh (see `_resolveAtHomeServer()`'s own comment); never caches the
+   * bytes here — a chapter page is large and read-once-per-view, the opposite of a cover, and the
+   * host's own Viewer already caches page bytes on its side.
+   * @param {string} pluginEntryId - unused; chapterId alone resolves the at-home server
+   * @param {string} chapterId
+   * @param {string} pageKey - a filename from this plugin's own `listPages()` `data[]`
+   * @returns {Promise<Buffer>}
+   */
+  async downloadPage(pluginEntryId, chapterId, pageKey) {
+    if (!chapterId || !pageKey) {
+      throw new Error('(downloadPage) chapterId and pageKey are required');
+    }
+
+    const { baseUrl, hash } = await this._resolveAtHomeServer(chapterId);
+
+    if (!this.httpClient || typeof this.httpClient.get !== 'function') {
+      throw new Error('(downloadPage) HTTP client get method is not configured');
+    }
+
+    const response = await this.httpClient.get(`${baseUrl}/data/${hash}/${pageKey}`, {
+      responseType: 'arraybuffer',
+    });
+
+    const body = response && typeof response === 'object' ? response.data : null;
+    const buffer = Buffer.isBuffer(body)
+      ? body
+      : typeof body === 'string'
+        ? Buffer.from(body, 'binary')
+        : body && body.buffer
+          ? Buffer.from(body.buffer)
+          : Buffer.alloc(0);
+
+    if (buffer.length === 0) {
+      throw new Error(`(downloadPage) Empty response body for ${pageKey}`);
     }
 
     return buffer;
