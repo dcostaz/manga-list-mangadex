@@ -181,6 +181,39 @@ test('listChapters: defaults language to "en" when the caller supplies none', as
   assert.deepEqual(feedCall.config.params['translatedLanguage[]'], ['en']);
 });
 
+test('listChapters: a multi-language title — switching the requested language changes both the request filter and the mapped results', async () => {
+  const { context } = createMockContext();
+  const { client, hooks } = createMockHttpClient();
+
+  hooks.getHandler = (url, config) => {
+    if (String(url).includes('/feed')) {
+      const requestedLanguage = config.params['translatedLanguage[]'][0];
+      const rows = requestedLanguage === 'es'
+        ? [chapterRow({ id: 'ch-es-1', chapter: '1', translatedLanguage: 'es' })]
+        : [chapterRow({ id: 'ch-en-1', chapter: '1', translatedLanguage: 'en' }), chapterRow({ id: 'ch-en-2', chapter: '2', translatedLanguage: 'en' })];
+      return { status: 200, data: { data: rows, total: rows.length } };
+    }
+    return { status: 200, data: { data: { attributes: { availableTranslatedLanguages: ['en', 'es'] } } } };
+  };
+
+  const wrapper = await createWrapper(client, context);
+
+  const englishResult = await wrapper.listChapters('manga-1', { language: 'en' });
+  assert.deepEqual(englishResult.chapters.map((c) => ({ id: c.id, language: c.language })), [
+    { id: 'ch-en-1', language: 'en' },
+    { id: 'ch-en-2', language: 'en' },
+  ]);
+
+  const spanishResult = await wrapper.listChapters('manga-1', { language: 'es' });
+  assert.deepEqual(spanishResult.chapters.map((c) => ({ id: c.id, language: c.language })), [
+    { id: 'ch-es-1', language: 'es' },
+  ]);
+
+  // availableLanguages reflects every language the title has, not just whichever was requested.
+  assert.deepEqual(englishResult.availableLanguages, ['en', 'es']);
+  assert.deepEqual(spanishResult.availableLanguages, ['en', 'es']);
+});
+
 test('listChapters: paginates past the 500-row limit using offset', async () => {
   const { context } = createMockContext();
   const { client, hooks } = createMockHttpClient();
