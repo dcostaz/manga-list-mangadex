@@ -189,6 +189,90 @@ test('findMatches - fails open to [] when search() throws', async () => {
   assert.deepEqual(matches, []);
 });
 
+// A search answered from this plugin's cache says so (`cached`, `fetchedAt`), and `options.refresh` asks MangaDex
+// itself (host-capability-contract §2.4). The host sets `refresh` only on the user's request for a live search.
+function searchOnlyHandler(hooks) {
+  return (url) => {
+    if (String(url).endsWith('/manga')) {
+      hooks.searches += 1;
+      return {
+        status: 200,
+        data: {
+          data: [{
+            id: 'match-1',
+            type: 'manga',
+            attributes: { title: { en: 'Solo Leveling' }, altTitles: [], description: {} },
+            relationships: [],
+          }],
+          included: [],
+        },
+      };
+    }
+    return { status: 200, data: { data: [] } };
+  };
+}
+
+test('findMatches - a first search is live, a repeat is answered from the cache and says when it was fetched', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+  httpHooks.searches = 0;
+  httpHooks.postHandler = tokenPostHandler;
+  httpHooks.getHandler = searchOnlyHandler(httpHooks);
+  const wrapper = await createWrapper(client, context);
+
+  const first = await wrapper.findMatches('Solo Leveling');
+  assert.equal(httpHooks.searches, 1);
+  assert.equal(first[0].cached, undefined, 'a live answer carries no cache marks');
+  assert.equal(first[0].fetchedAt, undefined);
+
+  const second = await wrapper.findMatches('Solo Leveling');
+  assert.equal(httpHooks.searches, 1, 'the repeat did not reach MangaDex');
+  assert.equal(second[0].cached, true);
+  assert.equal(typeof second[0].fetchedAt, 'string');
+  assert.ok(Number.isFinite(Date.parse(second[0].fetchedAt)));
+});
+
+test('findMatches - refresh asks MangaDex itself and answers live', async () => {
+  const { context } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+  httpHooks.searches = 0;
+  httpHooks.postHandler = tokenPostHandler;
+  httpHooks.getHandler = searchOnlyHandler(httpHooks);
+  const wrapper = await createWrapper(client, context);
+
+  await wrapper.findMatches('Solo Leveling');
+  const live = await wrapper.findMatches('Solo Leveling', { refresh: true });
+
+  assert.equal(httpHooks.searches, 2, 'the refresh reached MangaDex though the search was cached');
+  assert.equal(live[0].cached, undefined);
+  assert.equal(live[0].fetchedAt, undefined);
+
+  const after = await wrapper.findMatches('Solo Leveling');
+  assert.equal(httpHooks.searches, 2, 'and the live answer refreshed the cache');
+  assert.equal(after[0].cached, true);
+});
+
+test('findMatches - a cached search from before fetchedAt was recorded says cached without a time', async () => {
+  const { context, hooks: cacheHooks } = createMockContext();
+  const { client, hooks: httpHooks } = createMockHttpClient();
+  httpHooks.searches = 0;
+  httpHooks.postHandler = tokenPostHandler;
+  httpHooks.getHandler = searchOnlyHandler(httpHooks);
+  const wrapper = await createWrapper(client, context);
+
+  await wrapper.findMatches('Solo Leveling');
+  for (const [key, value] of cacheHooks.data) {
+    if (!key.startsWith('mangadex_searchManga_')) continue;
+    const parsed = JSON.parse(value);
+    delete parsed.fetchedAt;
+    cacheHooks.data.set(key, JSON.stringify(parsed));
+  }
+
+  const cached = await wrapper.findMatches('Solo Leveling');
+  assert.equal(cached[0].cached, true);
+  assert.equal(cached[0].fetchedAt, undefined);
+});
+
 // ---------------------------------------------------------------------------
 // buildLinkContribution() / syncEnrichment() — enrich
 // ---------------------------------------------------------------------------

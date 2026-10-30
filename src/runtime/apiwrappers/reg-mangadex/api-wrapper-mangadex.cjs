@@ -819,12 +819,14 @@ class MangaDexAPIWrapper {
   }
 
   /**
+   * `options.refresh: true` answers from MangaDex itself, never from this plugin's cache; an answer that came from
+   * the cache says so (`cached`, and `fetchedAt` when the cached search recorded one).
    * @param {string} query
-   * @param {{ useCache?: boolean, searchTitles?: string[] }} [_options]
+   * @param {{ useCache?: boolean, refresh?: boolean, searchTitles?: string[] }} [_options]
    * @returns {Promise<Array<Record<string, unknown>>>}
    */
   async search(query, _options = {}) {
-    const useCache = !(_options && typeof _options === 'object' && _options.useCache === false);
+    const useCache = !(_options && typeof _options === 'object' && (_options.useCache === false || _options.refresh === true));
     const targetTitles = this._buildTitleList(typeof query === 'string' ? query : '', {});
 
     const bestSnapshot = await this._selectBestSearchSnapshot(targetTitles, {
@@ -841,6 +843,8 @@ class MangaDexAPIWrapper {
             ...base,
             confidence: entry.matchType === 'exact' ? 100 : entry.matchType === 'fuzzy' ? 80 : 0,
             matchType: entry.matchType,
+            ...(bestSnapshot.cacheHit ? { cached: true } : {}),
+            ...(bestSnapshot.cacheHit && bestSnapshot.fetchedAt ? { fetchedAt: bestSnapshot.fetchedAt } : {}),
           };
         }),
       );
@@ -856,7 +860,7 @@ class MangaDexAPIWrapper {
   /**
    * @param {string} title
    * @param {boolean} [useCache]
-   * @param {{ cacheHit?: boolean }} [cacheMeta]
+   * @param {{ cacheHit?: boolean, fetchedAt?: string }} [cacheMeta] - filled in: whether the answer came from the cache, and when a cached one was fetched
    * @returns {Promise<{ data: Array<Record<string, unknown>>, includes: Array<Record<string, unknown>> }>}
    */
   async searchManga(title, useCache = true, cacheMeta) {
@@ -868,6 +872,7 @@ class MangaDexAPIWrapper {
       if (cached && typeof cached === 'object' && Array.isArray(cached.data) && cached.data.length > 0) {
         if (meta) {
           meta.cacheHit = true;
+          if (typeof cached.fetchedAt === 'string') meta.fetchedAt = cached.fetchedAt;
         }
         return {
           data: cached.data,
@@ -908,7 +913,7 @@ class MangaDexAPIWrapper {
     };
 
     if (result.data.length > 0) {
-      await this._setJSONCacheValue(cacheKey, result, 24 * 60 * 60);
+      await this._setJSONCacheValue(cacheKey, { ...result, fetchedAt: new Date().toISOString() }, 24 * 60 * 60);
     }
 
     return result;
@@ -2481,6 +2486,8 @@ class MangaDexAPIWrapper {
    *  match: Record<string, unknown> | undefined,
    *  attempts: number,
    *  cacheHit: boolean,
+
+   *  fetchedAt?: string,
    *  matchType: 'exact' | 'fuzzy',
    *  similarity: number,
    * }>}
@@ -2538,6 +2545,8 @@ class MangaDexAPIWrapper {
    *  bestRow: { row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number } | null,
    *  attempts: number,
    *  cacheHit: boolean,
+
+   *  fetchedAt?: string,
    * } | null>}
    */
   async _selectBestSearchSnapshot(targetTitles, options) {
@@ -2564,17 +2573,24 @@ class MangaDexAPIWrapper {
      *  bestRow: { row: Record<string, unknown>, matchType: 'exact' | 'fuzzy', similarity: number, index: number } | null,
      *  attempts: number,
      *  cacheHit: boolean,
+
+     *  fetchedAt?: string,
      * } | null} */
     let bestSnapshot = null;
 
     let attempts = 0;
     let cacheHit = false;
+    /** @type {number | null} the oldest time a cached search was fetched */
+    let fetchedAtMs = null;
 
     for (const title of normalizedTitles) {
       attempts += 1;
+      /** @type {{ cacheHit: boolean, fetchedAt?: string }} */
       const meta = { cacheHit: false };
       const searchResult = await this.searchManga(title, options?.useCache !== false, meta);
       cacheHit = cacheHit || Boolean(meta.cacheHit);
+      const metaFetchedAt = meta.cacheHit && meta.fetchedAt ? Date.parse(meta.fetchedAt) : NaN;
+      if (Number.isFinite(metaFetchedAt)) fetchedAtMs = fetchedAtMs === null ? metaFetchedAt : Math.min(fetchedAtMs, metaFetchedAt);
 
       const rows = Array.isArray(searchResult && searchResult.data)
         ? searchResult.data
@@ -2600,6 +2616,7 @@ class MangaDexAPIWrapper {
         bestRow,
         attempts,
         cacheHit,
+        ...(fetchedAtMs !== null ? { fetchedAt: new Date(fetchedAtMs).toISOString() } : {}),
       };
 
       if (!bestSnapshot) {
@@ -2834,20 +2851,22 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} title
-   * @param {object} [_options]
-   * @returns {Promise<Array<{ pluginEntryId: string, title: string, altTitles: string[], confidence: number }>>}
+   * @param {{ refresh?: boolean }} [options] - `refresh: true` answers from MangaDex itself, not from this plugin's cache
+   * @returns {Promise<Array<{ pluginEntryId: string, title: string, altTitles: string[], confidence: number, cached?: true, fetchedAt?: string }>>}
    */
-  async findMatches(title, _options) {
+  async findMatches(title, options) {
     const q = typeof title === 'string' ? title : '';
     if (!q.trim()) return [];
     try {
-      const results = await this.search(q);
+      const results = await this.search(q, options && options.refresh === true ? { refresh: true } : {});
       return results.slice(0, 5).map((r) => ({
         pluginEntryId: String(r.trackerId || r.pluginEntryId || ''),
         title: typeof r.title === 'string' ? r.title : q,
         altTitles: Array.isArray(r.alternativeTitles) ? r.alternativeTitles : [],
         confidence: typeof r.confidence === 'number' ? r.confidence : 0,
         coverUrl: typeof r.coverUrl === 'string' ? r.coverUrl : undefined,
+        ...(r.cached === true ? { cached: /** @type {true} */ (true) } : {}),
+        ...(r.cached === true && typeof r.fetchedAt === 'string' ? { fetchedAt: r.fetchedAt } : {}),
       }));
     } catch (error) {
       return [];
