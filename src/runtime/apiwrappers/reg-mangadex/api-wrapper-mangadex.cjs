@@ -1,9 +1,15 @@
 'use strict';
 
+const crypto = require('crypto');
 const path = require('path');
 const MangaDexAPISettings = require(path.join(__dirname, 'api-settings-mangadex.cjs'));
 
 const SERVICE_NAME = 'mangadex';
+// A fetched access token is retired this long before its TTL, so a request never leaves with one
+// that expires in flight.
+const TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
+// A token read back from the cache has an unknown age; hold it in memory only this long.
+const CACHED_TOKEN_HOLD_MS = 60 * 1000;
 
 /** @typedef {import('../../../../types/plugintypedefs').PluginServiceSettings} PluginServiceSettings */
 /** @typedef {import('../../../../types/plugintypedefs').MangaDexAPIWrapperCtorParams} MangaDexAPIWrapperCtorParams */
@@ -225,6 +231,25 @@ function getHttpStatus(error) {
   return null;
 }
 
+/**
+ * A per-entry failure reason the host can show the user as-is.
+ * @param {unknown} error
+ * @returns {string}
+ */
+function describeRequestError(error) {
+  const status = getHttpStatus(error);
+  if (status === 401 || status === 403) {
+    return `MangaDex refused the sign-in (HTTP ${status}) — check the MangaDex credential`;
+  }
+  if (status === 404) {
+    return 'MangaDex has no title with this id (HTTP 404)';
+  }
+  if (status !== null) {
+    return `MangaDex request failed (HTTP ${status})`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 class MangaDexAPIWrapper {
   /**
    * @param {object} [params]
@@ -245,7 +270,8 @@ class MangaDexAPIWrapper {
     this.apiSettings = apiSettings instanceof MangaDexAPISettings ? apiSettings : null;
 
     this._defaultTokenName = 'access_token';
-    this.bearerToken = null;
+    /** @type {{ identity: string, token: string, expiresAt: number } | null} */
+    this._bearer = null;
     this.credentials = null;
     this._context = providedContext && typeof providedContext === 'object' ? providedContext : null;
     this._initialized = false;
@@ -298,10 +324,17 @@ class MangaDexAPIWrapper {
     if (!current || typeof current !== 'object') {
       throw new Error('(refreshCredentials) current credential is required');
     }
-    const credentials = { username: current.username || '', password: current.password || '' };
+    // client_id/client_secret travel too: the token grant needs them, and the token cache keys
+    // derive from the same credential identity getToken() uses.
+    const credentials = {
+      username: current.username || '',
+      password: current.password || '',
+      client_id: current.client_id || '',
+      client_secret: current.client_secret || '',
+    };
     const tokenData = await this._fetchNewToken(credentials, { forceRefresh: true });
     const accessToken = await this._extractToken(tokenData);
-    const refreshKey = this._getTokenCacheKey('refresh_token');
+    const refreshKey = this._getTokenCacheKey('refresh_token', this._credentialIdentity(credentials));
     let refreshToken = current.refreshToken || null;
     if (this._context && this._context.cache) {
       const cached = await this._context.cache.getValue(refreshKey, { userScoped: true });
@@ -445,6 +478,9 @@ class MangaDexAPIWrapper {
       throw new Error('Credentials must be an object.');
     }
 
+    if (this._bearer && this._bearer.identity !== this._credentialIdentity(credentials)) {
+      this._bearer = null;
+    }
     this.credentials = { ...credentials };
     return { ...this.credentials };
   }
@@ -519,13 +555,14 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {string} [overrideTokenName]
+   * @param {string} [identity] - _credentialIdentity() of the credential the token belongs to
    * @returns {string}
    */
-  _getTokenCacheKey(overrideTokenName) {
+  _getTokenCacheKey(overrideTokenName, identity) {
     const tokenName = typeof overrideTokenName === 'string' && overrideTokenName
       ? overrideTokenName
       : this._defaultTokenName;
-    return `${SERVICE_NAME}_${tokenName}`;
+    return identity ? `${SERVICE_NAME}_${tokenName}:${identity}` : `${SERVICE_NAME}_${tokenName}`;
   }
 
   /**
@@ -564,27 +601,43 @@ class MangaDexAPIWrapper {
   }
 
   /**
+   * Short, stable id for the credential the host last applied — the token belongs to that
+   * credential, not to the instance. The host re-applies the system or the user credential before
+   * each operation (manga-list-plugins-boundry-surface.md §1.3), so keying the token by it means a
+   * system-side call can never send a user-side token, nor the reverse.
+   * @param {PluginCredential | null} credentials
+   * @returns {string}
+   */
+  _credentialIdentity(credentials) {
+    const source = `${(credentials && credentials.client_id) || ''}:${(credentials && credentials.username) || ''}`;
+    return crypto.createHash('sha256').update(source).digest('hex').slice(0, 12);
+  }
+
+  /**
+   * Returns an access token for the credential applied right now. The in-memory copy is used only
+   * while it belongs to that credential and hasn't expired: a fetched token lives its TTL less a
+   * skew, a token read back from the cache (age unknown) at most CACHED_TOKEN_HOLD_MS.
    * @param {boolean} [forceRefresh]
    * @returns {Promise<string>}
    */
   async getToken(forceRefresh = false) {
-    const accessKey = this._getTokenCacheKey('access_token');
-    if (!forceRefresh && this.bearerToken) {
-      return this.bearerToken;
+    const credentials = await this.getCredentials();
+    if (!credentials) {
+      throw new Error('Credentials not found.');
+    }
+
+    const identity = this._credentialIdentity(credentials);
+    const held = this._bearer;
+    if (!forceRefresh && held && held.identity === identity && held.expiresAt > Date.now()) {
+      return held.token;
     }
 
     if (!forceRefresh && (this._context && this._context.cache)) {
-      const cached = await this._context.cache.getValue(accessKey, { userScoped: true });
+      const cached = await this._context.cache.getValue(this._getTokenCacheKey('access_token', identity), { userScoped: true });
       if (cached) {
-        this.bearerToken = cached;
+        this._bearer = { identity, token: cached, expiresAt: Date.now() + CACHED_TOKEN_HOLD_MS };
         return cached;
       }
-    }
-
-    let credentials = await this.getCredentials();
-
-    if (!credentials) {
-      throw new Error('Credentials not found.');
     }
 
     const tokenData = await this._fetchNewToken(credentials, { forceRefresh });
@@ -593,9 +646,51 @@ class MangaDexAPIWrapper {
       return '';
     }
 
-    await this._cacheToken(tokenData);
-    this.bearerToken = accessToken;
+    await this._cacheToken(tokenData, identity);
+    this._bearer = {
+      identity,
+      token: accessToken,
+      expiresAt: Date.now() + (this._getTokenTTL('access_token') * 1000) - TOKEN_EXPIRY_SKEW_MS,
+    };
     return accessToken;
+  }
+
+  /**
+   * Runs an authenticated request with the current token. A 401 means the token died early
+   * (revoked, or expired sooner than its TTL): drop it, fetch a fresh one and retry once.
+   * @template T
+   * @param {(token: string) => Promise<T>} request
+   * @returns {Promise<T>}
+   */
+  async _authed(request) {
+    const token = await this.getToken();
+    try {
+      return await request(token);
+    } catch (error) {
+      if (getHttpStatus(error) !== 401) {
+        throw error;
+      }
+      await this._invalidateAccessToken(token);
+      return request(await this.getToken(true));
+    }
+  }
+
+  /**
+   * @param {string} token - the token that was rejected
+   * @returns {Promise<void>}
+   */
+  async _invalidateAccessToken(token) {
+    const held = this._bearer;
+    if (held && held.token === token) {
+      this._bearer = null;
+    }
+    const credentials = await this.getCredentials();
+    if (credentials && (this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
+      await this._context.cache.deleteValue(
+        this._getTokenCacheKey('access_token', this._credentialIdentity(credentials)),
+        { userScoped: true },
+      );
+    }
   }
 
   /**
@@ -605,7 +700,7 @@ class MangaDexAPIWrapper {
    */
   async _fetchNewToken(credentials, options = {}) {
     const forceRefresh = options && typeof options === 'object' && options.forceRefresh === true;
-    const refreshKey = this._getTokenCacheKey('refresh_token');
+    const refreshKey = this._getTokenCacheKey('refresh_token', this._credentialIdentity(credentials));
     const cachedRefreshToken = forceRefresh ? null : ((this._context && this._context.cache) ? await this._context.cache.getValue(refreshKey, { userScoped: true }) : null);
     const useRefreshFlow = Boolean(cachedRefreshToken) && !forceRefresh;
 
@@ -674,26 +769,26 @@ class MangaDexAPIWrapper {
 
   /**
    * @param {Record<string, string>} tokenData
+   * @param {string} identity - _credentialIdentity() of the credential the token was issued for
    * @returns {Promise<void>}
    */
-  async _cacheToken(tokenData) {
+  async _cacheToken(tokenData, identity) {
     if (!tokenData || typeof tokenData !== 'object' || !(this._context && this._context.cache)) {
       return;
     }
 
     if (typeof tokenData.access_token === 'string' && tokenData.access_token) {
       await this._context.cache.setValue(
-        this._getTokenCacheKey('access_token'),
+        this._getTokenCacheKey('access_token', identity),
         tokenData.access_token,
         this._getTokenTTL('access_token'),
         { userScoped: true },
       );
-      this.bearerToken = tokenData.access_token;
     }
 
     if (typeof tokenData.refresh_token === 'string' && tokenData.refresh_token) {
       await this._context.cache.setValue(
-        this._getTokenCacheKey('refresh_token'),
+        this._getTokenCacheKey('refresh_token', identity),
         tokenData.refresh_token,
         this._getTokenTTL('refresh_token'),
         { userScoped: true },
@@ -896,13 +991,13 @@ class MangaDexAPIWrapper {
       throw new Error('(searchManga) HTTP client get method is not configured');
     }
 
-    const response = await this.httpClient.get(endpoint, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
+    const response = await this._authed((token) => this.httpClient.get(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
       params: {
         title,
         'includes[]': ['author', 'artist'],
       },
-    });
+    }));
 
     const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
       ? response.data
@@ -946,12 +1041,12 @@ class MangaDexAPIWrapper {
       throw new Error('(getMangaById) HTTP client get method is not configured');
     }
 
-    const response = await this.httpClient.get(endpoint, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
+    const response = await this._authed((token) => this.httpClient.get(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
       params: {
         'includes[]': ['author', 'artist'],
       },
-    });
+    }));
 
     const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
       ? response.data
@@ -1003,10 +1098,10 @@ class MangaDexAPIWrapper {
       throw new Error('(getCovers) HTTP client get method is not configured');
     }
 
-    const response = await this.httpClient.get(endpoint, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
+    const response = await this._authed((token) => this.httpClient.get(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
       params: { 'manga[]': mangaId, limit: 100 },
-    });
+    }));
 
     const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
       ? response.data
@@ -1052,10 +1147,10 @@ class MangaDexAPIWrapper {
     }
 
     try {
-      const response = await this.httpClient.get(`${baseUrl}/author`, {
-        headers: { Authorization: `Bearer ${this.bearerToken}` },
+      const response = await this._authed((token) => this.httpClient.get(`${baseUrl}/author`, {
+        headers: { Authorization: `Bearer ${token}` },
         params: { 'ids[]': limitedIds, limit: 100 },
-      });
+      }));
 
       const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
         ? response.data
@@ -1314,14 +1409,14 @@ class MangaDexAPIWrapper {
     }
 
     try {
-      const response = await this.httpClient.get(endpoint, {
-        headers: { Authorization: `Bearer ${this.bearerToken}` },
-      });
+      const response = await this._authed((token) => this.httpClient.get(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      }));
 
       const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
         ? response.data
         : {};
-      const status = typeof responseData.status === 'string' ? responseData.status : null;
+      const status =typeof responseData.status === 'string' ? responseData.status : null;
       if (status && (this._context && this._context.cache)) {
         await this._context.cache.setValue(cacheKey, status, 60 * 60, { userScoped: true });
       }
@@ -1423,10 +1518,10 @@ class MangaDexAPIWrapper {
         await new Promise((resolve) => setTimeout(resolve, throttleMs));
       }
 
-      const response = await this.httpClient.get(endpoint, {
-        headers: { Authorization: `Bearer ${this.bearerToken}` },
+      const response = await this._authed((token) => this.httpClient.get(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
         params: { 'ids[]': chunk, limit: chunk.length },
-      });
+      }));
 
       const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
         ? response.data
@@ -1482,10 +1577,10 @@ class MangaDexAPIWrapper {
         await new Promise((resolve) => setTimeout(resolve, throttleMs));
       }
 
-      const response = await this.httpClient.get(endpoint, {
-        headers: { Authorization: `Bearer ${this.bearerToken}` },
+      const response = await this._authed((token) => this.httpClient.get(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
         params: { 'manga[]': chunk },
-      });
+      }));
 
       const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
         ? response.data
@@ -1559,9 +1654,9 @@ class MangaDexAPIWrapper {
       throw new Error('(getReadingList) HTTP client get method is not configured');
     }
 
-    const response = await this.httpClient.get(endpoint, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
-    });
+    const response = await this._authed((token) => this.httpClient.get(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+    }));
 
     const responseData = response && typeof response === 'object' && response.data && typeof response.data === 'object'
       ? response.data
@@ -1664,12 +1759,12 @@ class MangaDexAPIWrapper {
       throw new Error('(updateStatus) HTTP client post method is not configured');
     }
 
-    const response = await this.httpClient.post(endpoint, { status }, {
+    const response = await this._authed((token) => this.httpClient.post(endpoint, { status }, {
       headers: {
-        Authorization: `Bearer ${this.bearerToken}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-    });
+    }));
 
     if (this._context && this._context.cache) {
       await this._context.cache.setValue(`mangadex_readingStatus_${trackerId}`, status, 60 * 60, { userScoped: true });
@@ -1720,12 +1815,12 @@ class MangaDexAPIWrapper {
       throw new Error('(updateRating) HTTP client post method is not configured');
     }
 
-    const response = await this.httpClient.post(endpoint, { rating: numericRating }, {
+    const response = await this._authed((token) => this.httpClient.post(endpoint, { rating: numericRating }, {
       headers: {
-        Authorization: `Bearer ${this.bearerToken}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-    });
+    }));
 
     return {
       status: typeof response.status === 'number' ? response.status : null,
@@ -1758,9 +1853,9 @@ class MangaDexAPIWrapper {
       throw new Error('(deleteRating) HTTP client delete method is not configured');
     }
 
-    const response = await this.httpClient.delete(endpoint, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
-    });
+    const response = await this._authed((token) => this.httpClient.delete(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+    }));
 
     return {
       status: typeof response.status === 'number' ? response.status : null,
@@ -1800,9 +1895,9 @@ class MangaDexAPIWrapper {
         return { pluginEntryId, success: false, error: '(subscribe) HTTP client post method is not configured' };
       }
 
-      await this.httpClient.post(followEndpoint, {}, {
-        headers: { Authorization: `Bearer ${this.bearerToken}` },
-      });
+      await this._authed((token) => this.httpClient.post(followEndpoint, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      }));
 
       if (!status || typeof status !== 'string') {
         return { pluginEntryId, success: true, mode: 'subscribed', listId: null };
@@ -1824,7 +1919,7 @@ class MangaDexAPIWrapper {
 
       return { pluginEntryId, success: true, mode: 'subscribed', listId: null };
     } catch (error) {
-      return { pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) };
+      return { pluginEntryId, success: false, error: describeRequestError(error) };
     }
   }
 
@@ -1889,7 +1984,7 @@ class MangaDexAPIWrapper {
       }
       return { pluginEntryId, success: true, updatedFields: ['rating'], message: 'Updated rating on MangaDex' };
     } catch (error) {
-      return { pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) };
+      return { pluginEntryId, success: false, error: describeRequestError(error) };
     }
   }
 
@@ -1986,9 +2081,9 @@ class MangaDexAPIWrapper {
       throw new Error('(unfollowManga) HTTP client delete method is not configured');
     }
 
-    await this.httpClient.delete(endpoint, {
-      headers: { Authorization: `Bearer ${this.bearerToken}` },
-    });
+    await this._authed((token) => this.httpClient.delete(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+    }));
 
     if ((this._context && this._context.cache) && typeof this._context.cache.deleteValue === 'function') {
       await this._context.cache.deleteValue(`mangadex_readingStatus_${seriesId}`, { userScoped: true });
@@ -2013,7 +2108,7 @@ class MangaDexAPIWrapper {
         await this.unfollowManga(pluginEntryId);
         results.push({ pluginEntryId, success: true });
       } catch (error) {
-        results.push({ pluginEntryId, success: false, error: error instanceof Error ? error.message : String(error) });
+        results.push({ pluginEntryId, success: false, error: describeRequestError(error) });
       }
     }
     return results;
