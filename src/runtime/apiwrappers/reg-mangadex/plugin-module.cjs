@@ -8,6 +8,7 @@ const SettingsClass = require(path.join(__dirname, 'api-settings-mangadex.cjs'))
 
 /** @type {PluginModuleDescriptor} */
 const pluginModule = {
+  displayName: 'MangaDex',
   WrapperClass,
   SettingsClass,
 };

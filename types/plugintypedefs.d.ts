@@ -423,6 +423,8 @@ export interface LocalTrackerEntry {
 // ---------------------------------------------------------------------------
 
 export interface PluginModuleDescriptor {
+  /** The name the host shows for a plugin with no workspace of its own. */
+  displayName?: string;
   WrapperClass: Function;
   SettingsClass: Function;
 }
