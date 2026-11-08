@@ -78,5 +78,5 @@ ENABLE_REAL_LIBRARY_TEST=1 MDX_TEST_USERNAME=… (the same four) npm run test:in
 ENABLE_REAL_RETRIEVE_TEST=1 [MDX_TEST_MANGA_ID=<uuid>] npm run test:integration
 ```
 
-`@manga-list/plugin-sdk` is a devDependency on `file:../manga-list-plugin-sdk` (with `install-links=true`) until the
-SDK repository has a remote; the GitHub workflows cannot install it until then.
+`@manga-list/plugin-sdk` is a devDependency pinned to the contract's tag
+(`git+https://github.com/dcostaz/manga-list-plugin-sdk.git#v4.0.0`).

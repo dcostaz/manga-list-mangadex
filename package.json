@@ -22,7 +22,7 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "@manga-list/plugin-sdk": "file:../manga-list-plugin-sdk",
+    "@manga-list/plugin-sdk": "git+https://github.com/dcostaz/manga-list-plugin-sdk.git#v4.0.0",
     "@types/archiver": "^6.0.2",
     "@types/node": "^26.0.0",
     "typescript": "^6.0.3"
