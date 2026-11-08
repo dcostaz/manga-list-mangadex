@@ -4,144 +4,79 @@
 [![release-runtime-zip](https://github.com/dcostaz/manga-list-mangadex/actions/workflows/release-runtime-zip.yml/badge.svg?branch=main)](https://github.com/dcostaz/manga-list-mangadex/actions/workflows/release-runtime-zip.yml)
 [![download-runtime-zip](https://img.shields.io/badge/download-runtime_zip-0969da?logo=github)](https://github.com/dcostaz/manga-list-mangadex/releases/download/runtime-latest/manga-list-mangadex-runtime.zip)
 
-Runtime tracker add-on package source for MangaDex.
+The manga-list tracker plugin for [MangaDex](https://mangadex.org), a manga reading site with a public API, a
+per-account followed list with reading statuses and ratings, and chapters it hosts itself. Contract **4.0.0**
+(`docs/plugins/host-capability-contract.md` in the host repo), built on `@manga-list/plugin-sdk` in the template's
+shape (`Plan-2026Q4-tracker-plugin-standardization.md`, Phase 4).
 
-This repository builds a runtime-installable zip add-on for the manga-list app, compatible with the app's `TrackerPackageLoader`.
+Settings reference: [docs/settings.md](docs/settings.md). What happened to each 3.x method:
+[docs/nothing-lost.md](docs/nothing-lost.md).
 
-Tracker-specific settings reference: [docs/settings.md](docs/settings.md)
+## Shape
 
-Latest runtime zip download (GitHub release asset):
-
-https://github.com/dcostaz/manga-list-mangadex/releases/download/runtime-latest/manga-list-mangadex-runtime.zip
-
-## Build
-
-```bash
-npm run build
+```
+src/runtime/apiwrappers/reg-mangadex/
+  client-mangadex.cjs     L4: api.mangadex.org — the password/refresh grants, the endpoints, the 100-id batches,
+                          the feed's pages, the at-home servers, the HTML-edge normalizer
+  mapping-mangadex.cjs    L3b: pure — MangaDex's shapes → the contract's DTOs (and the search ranking); the
+                          client never imports it
+  plugin-mangadex.cjs     L3a: the template's generic definition (bindings by convention), plus two explicit
+                          bindings: summarizeEntries batched, searchCovers' title match
+  plugin-package.json     the manifest
+  mangadex-api-settings.{definition,values}.json
+  images/mangadex-icon.svg
 ```
 
-Optional build flags:
+Every offer the contract has for a tracker is declared and bound: `credential`, `search.query`, `search.lookup`,
+`enrich`, `enrich.cover`, `sync.pull`, `sync.push`, `sync.list`, `subscribe.add`, `subscribe.remove`, `watch.entry`,
+`watch.list`, `watch.summary`, `retrieve.chapterList`, `retrieve.chapterPages`.
+
+## What MangaDex is, as this plugin relies on it
+
+From MangaDex's API documentation and the 3.x wrapper's live-confirmed behaviour:
+
+- **Sign-in** is OAuth2 against `auth.mangadex.org`'s realm with a *personal API client*: the password grant
+  (`username`, `password`, `client_id`, `client_secret`, form-encoded) mints a 15-minute access token and a refresh
+  token; the refresh grant renews the access token. The plugin renews an expired token with the refresh grant, falls
+  back to the password grant when the refresh is refused, and re-signs in once (and replays once) when MangaDex
+  rejects a token (401). Tokens stay in memory, per credential slot; the host never stores them.
+- **Search is authenticated** (owner ruling 2026-07-17): `searchOptions.requiresCredential: true`. One
+  `GET /manga?title=` with `includes[]` author, artist and cover_art carries everything a candidate needs.
+- **The followed list**: `GET /manga/status` answers every followed manga's status in one call; titles come from
+  `GET /manga?ids[]=` and ratings from `GET /rating?manga[]=`, 100 ids per call.
+- **Reading statuses** are `reading`, `on_hold`, `plan_to_read`, `dropped`, `re_reading`, `completed` — the
+  manifest's `push` and `pull` tables, one to one (the 3.x manifest's `paused` and `RE_READING → reading` were wrong,
+  F9). The host resolves them; the plugin passes MangaDex's own token both ways.
+- **Progress** is a rating only, an integer 1–10 (`progressAxes` `{ axis: 'rating', scale: 'integer' }`); MangaDex
+  has no series-level chapter progress. The host's 0 ("cleared") is a `DELETE /rating/{id}`.
+- **Subscribing** follows the manga, then sets its status; unsubscribing unfollows (already absent is success).
+- **Chapters** (`/manga/{id}/feed`, 500 per page), a manga's languages (`/manga/{id}`) and pages (the at-home
+  server, valid 15 minutes for its chapter, resolved on every call; full quality `data[]`) are public:
+  `retrieveOptions.requiresCredential: false`, so Retrieving calls them anonymously. Chapters hosted elsewhere
+  (`externalUrl`) are left out.
+- **Watching**: `queryLive` and `summarizeEntries` report the manga's own state (publication status, final chapter,
+  last change), never the user's list; a manga MangaDex does not return is `not_found`.
+
+## Build and test
 
 ```bash
-node scripts/build-runtime-tracker-package.cjs --output ./dist/mangadex-runtime.zip --host-api-version 1.0.0
+npm test                    # client, mapping, build, and the contract suite (fixture: tests/fixtures/mangadex-source.cjs)
+npm run typecheck           # tsc --noEmit against the SDK's types
+npm run check:nothing-lost  # every 3.x public method classified (docs/nothing-lost.md)
+npm run build               # dist/manga-list-mangadex-runtime-<version>.zip
 ```
 
-Build output contains:
+The zip holds the three files, the manifest (at the root and beside the module), the merged settings and the icon;
+never the SDK, which the host places beside the plugin runtime root.
 
-1. `tracker-package.json`
-2. `apiwrappers/trackerdtocontract.cjs`
-3. `apiwrappers/reg-mangadex/api-wrapper-mangadex.cjs`
-4. `apiwrappers/reg-mangadex/api-settings-mangadex.cjs`
-5. `apiwrappers/reg-mangadex/mangadex-api-settings.json` (generated effective settings used at runtime; not an authored source file)
-6. `apiwrappers/reg-mangadex/mapper-mangadex.cjs`
-7. `apiwrappers/reg-mangadex/tracker-module.cjs`
-
-Settings source of truth in this repository is split into:
-
-1. `src/runtime/apiwrappers/reg-mangadex/mangadex-api-settings.definition.json`
-2. `src/runtime/apiwrappers/reg-mangadex/mangadex-api-settings.values.json`
-
-The build script validates and merges both source files into the runtime payload:
-`apiwrappers/reg-mangadex/mangadex-api-settings.json`.
-
-Note: Runtime manifest entrypoint `settingsFile` points to the generated effective file above,
-while repository source of truth remains the definition/values pair. The definition and values source files are not bundled into the runtime zip artifact.
-
-Contract version governance:
-
-1. DTO contract version comes from `src/runtime/apiwrappers/trackerdtocontract.cjs` (`TRACKER_DTO_CONTRACT_VERSION`).
-2. Settings contract version is centrally defined in the same file (`TRACKER_SETTINGS_CONTRACT_VERSION`).
-3. Build enforces that both `mangadex-api-settings.definition.json` and `mangadex-api-settings.values.json`
-	use `metadata.settingsContractVersion` matching `TRACKER_SETTINGS_CONTRACT_VERSION`.
-4. Build fails fast on mismatch to prevent contract drift.
-
-Search DTO contract v2 notes:
-
-1. `toSearchResultDtos` now emits `wrapperEvidence` instead of top-level `confidence` and `matchType`.
-2. `wrapperEvidence` is wrapper-local evidence (`classification`, `matchedField`, optional score/similarity signals).
-3. Final UI `confidence` and `matchType` are host-owned and computed in manga-list for cross-tracker normalization.
-
-Type definitions governance:
-
-1. Tracker-local typedefs live in `types/trackertypedefs.d.ts`.
-2. Runtime classes explicitly reference these typedefs using JSDoc `import(...)` types.
-3. The repository does not rely on manga-list type definition files for runtime wrapper, mapper, settings, or tracker-module contracts.
-
-## Test
+Live checks, by hand, never in CI (`tests/integration/live.manual.cjs`, read-only):
 
 ```bash
-npm test
+ENABLE_REAL_SEARCH_TEST=1 MDX_TEST_USERNAME=… MDX_TEST_PASSWORD=… MDX_TEST_CLIENT_ID=… MDX_TEST_CLIENT_SECRET=… \
+  [MDX_TEST_SEARCH_QUERY="..."] npm run test:integration
+ENABLE_REAL_LIBRARY_TEST=1 MDX_TEST_USERNAME=… (the same four) npm run test:integration
+ENABLE_REAL_RETRIEVE_TEST=1 [MDX_TEST_MANGA_ID=<uuid>] npm run test:integration
 ```
 
-`npm test` runs the unit suites under `tests/unit/`.
-
-Manual local auth integration test (interactive credentials prompt):
-
-```bash
-npm run test:auth:interactive
-```
-
-This test is local-only and intentionally excluded from default `npm test` and CI runs.
-The runner prompts for temporary real MangaDex credentials (`username`, `password`, `clientId`, `clientSecret`) and validates live token acquisition.
-For non-interactive shells, set `MDX_TEST_USERNAME`, `MDX_TEST_PASSWORD`, `MDX_TEST_CLIENT_ID`, and `MDX_TEST_CLIENT_SECRET` before running the command.
-By default it prints verbose auth progress and a masked token preview.
-Set `MDX_TEST_SHOW_FULL_TOKEN=1` if you explicitly want the full token printed.
-
-Manual local search integration test (interactive credentials + query prompt):
-
-```bash
-npm run test:search:interactive
-```
-
-This test is local-only and intentionally excluded from default `npm test` and CI runs.
-The runner prompts for temporary real MangaDex credentials (`username`, `password`, `clientId`, `clientSecret`) and a live search query.
-For non-interactive shells, set `MDX_TEST_USERNAME`, `MDX_TEST_PASSWORD`, `MDX_TEST_CLIENT_ID`, `MDX_TEST_CLIENT_SECRET`, and `MDX_TEST_SEARCH_QUERY` before running the command.
-Set `MDX_TEST_SHOW_FULL_SEARCH_PAYLOAD=1` if you want the full search payload logged.
-
-GitHub Actions runs the same test command on every push and pull request via:
-`.github/workflows/tests.yml`.
-
-GitHub Actions also builds and publishes the runtime zip on pushes to main via:
-`.github/workflows/release-runtime-zip.yml`.
-
-Final test suites:
-
-1. `tests/unit/build-runtime-tracker-package.test.cjs`
-2. `tests/unit/runtime-mapper.test.cjs`
-3. `tests/unit/runtime-settings.test.cjs`
-4. `tests/unit/runtime-wrapper-contract.test.cjs`
-5. `tests/unit/runtime-wrapper-init.test.cjs`
-6. `tests/unit/runtime-wrapper-token.test.cjs`
-7. `tests/unit/runtime-wrapper-read.test.cjs`
-8. `tests/unit/runtime-wrapper-write.test.cjs`
-9. `tests/unit/runtime-wrapper-search-cover.test.cjs`
-
-Integration folder:
-
-1. `tests/integration/runtime-wrapper-auth-integration.manual.cjs`
-2. `tests/integration/runtime-wrapper-search-integration.manual.cjs`
-
-These suites cover build/manifest compatibility, mapper normalization,
-settings contracts and baseline matrix checks, wrapper lifecycle,
-token lifecycle behavior, read and write orchestration flows,
-and search/cover runtime behavior.
-
-Search selection behavior for tracker lookup:
-
-1. Search evaluates the full title candidate list generated from title, aliases, and alternative titles.
-2. For each candidate query, search results are ranked by exact, then fuzzy match strength.
-3. The wrapper keeps the highest-scoring query snapshot and only short-circuits when a 100 percent exact match is found.
-4. If no exact match exists, the best fuzzy-scored query snapshot is used as the returned result set.
-
-Cover strategy trait declarations (`apiwrappers/reg-mangadex/tracker-module.cjs`):
-
-1. `supportsCoverInSearchResult`: `false`
-2. `supportsCoverByIdLookup`: `true`
-3. `supportsMultiCoverPerId`: `true`
-4. `supportsBatchCoverByIdLookup`: `false`
-5. `preferredCoverHydrationCount`: `1`
-
-These traits are capability hints for host orchestration. Internal retrieval flow remains wrapper-owned.
-
-Mapper normalization includes contributor role cleanup for publishers,
-including canonical alias mapping (`Publisher` -> `Original`) before dedupe.
+`@manga-list/plugin-sdk` is a devDependency on `file:../manga-list-plugin-sdk` (with `install-links=true`) until the
+SDK repository has a remote; the GitHub workflows cannot install it until then.
