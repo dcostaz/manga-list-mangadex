@@ -18,9 +18,10 @@ Settings reference: [docs/settings.md](docs/settings.md). What happened to each 
 src/runtime/apiwrappers/reg-mangadex/
   client-mangadex.cjs     L4: api.mangadex.org — the password/refresh grants, the endpoints, the 100-id batches,
                           the feed's pages, the at-home servers, the HTML-edge normalizer
-  mapping-mangadex.cjs    L3b: pure — MangaDex's shapes → the contract's DTOs (and the search ranking)
-  plugin-mangadex.cjs     L3a: the template's generic definition (bindings by convention), plus one explicit
-                          binding: summarizeEntries batched
+  mapping-mangadex.cjs    L3b: pure — MangaDex's shapes → the contract's DTOs (and the search ranking); the
+                          client never imports it
+  plugin-mangadex.cjs     L3a: the template's generic definition (bindings by convention), plus two explicit
+                          bindings: summarizeEntries batched, searchCovers' title match
   plugin-package.json     the manifest
   mangadex-api-settings.{definition,values}.json
   images/mangadex-icon.svg

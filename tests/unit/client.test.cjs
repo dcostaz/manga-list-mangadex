@@ -491,3 +491,9 @@ test('summarizeEntries: an empty request is an empty answer, with no call', asyn
     assert.deepEqual(await instance.summarizeEntries([], system()), []);
     assert.equal(axios.calls.length, 0);
 });
+
+test('layering: the client (L4) never requires the mapping (L3b) — it exposes source calls only', () => {
+    const source = fs.readFileSync(path.join(tracker.dir, `client-${tracker.id}.cjs`), 'utf8');
+    assert.equal(/require\(\s*['"`]\.\/mapping-/.test(source), false, 'client-mangadex.cjs requires ./mapping-');
+    assert.equal(source.includes("'./mapping-"), false, 'client-mangadex.cjs names ./mapping-');
+});
