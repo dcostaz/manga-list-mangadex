@@ -1,192 +1,92 @@
 # MangaDex Settings Reference
 
-This document describes the tracker-specific settings declared by the `manga-list-mangadex` runtime package.
+The settings the `manga-list-mangadex` runtime package declares (`mangadex-api-settings.definition.json`, values in
+`mangadex-api-settings.values.json`; the build merges them into `mangadex-api-settings.json`). Settings contract
+version **1.0.0** (`PLUGIN_SETTINGS_CONTRACT_VERSION` from `@manga-list/plugin-sdk`). Component name `MangaDexAPI`,
+unchanged, so a user's saved overrides still apply.
 
-Settings contract version: **1.0.0** (declared in `src/runtime/apiwrappers/trackerdtocontract.cjs`).
-
----
-
-## Three-Tier Model
-
-| Tier | Description |
-|------|-------------|
-| 1 — Package defaults | Keys and standalone-viable defaults baked into this package (`mangadex-api-settings.definition.json` merged with `mangadex-api-settings.values.json`) |
-| 2 — Host overrides | User-edited per-tracker values stored by the host in its override file; only `readOnly=false` keys may be written |
-| 3 — Host injection | Common cross-tracker defaults from `TrackerCommonSettings` in the host; merged at init time |
-
-Effective resolution order: Tier 2 wins over Tier 3 wins over Tier 1.
-
-During development (unit tests, integration tests in this repo) only Tier 1 is active. Tier 1 defaults must therefore be complete and standalone-viable without Tier 3 present.
+The keys fall in the three sets of `Plan-2026Q4-tracker-plugin-standardization.md` Decision 5: **SDK-read** (the
+SDK's `http` enforces them), **client-read** (`client-mangadex.cjs` reads them) and **host-read**. Keys the
+decision deleted are gone: `cache.enabled`, `cache.provider`, `retry.retryableErrors`, `resilience.healthCheck.*`,
+`ui.credentialsTemplate` (the credential fields are the manifest's `credentialOptions.fields`), the
+`rateLimit.perEndpoint.<name>` duplicates of `api.endpoints.<name>.throttle`, and `statusMapping.*` (the status
+tokens are the manifest's `syncOptions.statusVocabulary`; only MangaUpdates keeps a custom-list override).
 
 ---
 
-## Tracker Identity
+## Host-read
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `ui.label` | `MangaDex` | Display name shown in the host UI |
-| `ui.icon` | `images/manga-dex.svg` | Icon path relative to the runtime package |
-| `ui.credentialsTemplate` | See below | OAuth credential form schema |
-| `credentials.primary` | `null` | Managed via host keychain; never stored in settings file |
+| `ui.label` | `MangaDex` | Display name |
+| `ui.icon` | `images/mangadex-icon.svg` | The manifest's `iconPath` |
+| `credentials.primary` | `null` | The Settings panel's system-credential button; the credential is kept in the host's keychain, never here |
 
-### Credential fields
+### Credential fields (the manifest's `credentialOptions.fields`, contract §1.4)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `username` | text | yes | MangaDex account username |
-| `password` | password | yes | Account password used to request tokens |
-| `clientId` | text | yes | OAuth client ID from MangaDex developer settings |
-| `clientSecret` | password | yes | OAuth client secret for the MangaDex app |
+| `password` | password | yes | Account password, exchanged for tokens (password grant) |
+| `client_id` | text | yes | The personal API client's id |
+| `client_secret` | password | yes | The personal API client's secret |
 
----
+## Client-read
 
-## Authentication Architecture
+### Endpoints (`readOnly`)
 
-MangaDex uses OAuth 2.0 / OpenID Connect. The wrapper requests access tokens via the `token` endpoint and refreshes them via the `refreshToken` endpoint using the stored client credentials.
+| Key | Default |
+|-----|---------|
+| `api.authUrl` | `https://auth.mangadex.org/realms/mangadex/protocol/openid-connect` |
+| `api.baseUrl` | `https://api.mangadex.org` |
+| `api.endpoints.token.template` | `${authUrl}/token` (password grant) |
+| `api.endpoints.refreshToken.template` | `${authUrl}/token` (refresh grant) |
+| `api.endpoints.manga.template` | `${baseUrl}/manga` (search, by-id batches; `/{id}` for one manga) |
+| `api.endpoints.cover.template` | `${baseUrl}/cover` |
+| `api.endpoints.follow.template` | `${baseUrl}/manga/${id}/follow` |
+| `api.endpoints.status.template` | `${baseUrl}/manga/${id}/status` |
+| `api.endpoints.statusList.template` | `${baseUrl}/manga/status` |
+| `api.endpoints.rating.template` | `${baseUrl}/rating/${id}` |
+| `api.endpoints.ratingList.template` | `${baseUrl}/rating` |
+| `api.endpoints.feed.template` | `${baseUrl}/manga/${id}/feed` |
+| `api.endpoints.atHomeServer.template` | `${baseUrl}/at-home/server/${id}` |
 
----
+### Cache lifetimes (seconds)
 
-## API Endpoints
+| Key | Default | Used for |
+|-----|---------|----------|
+| `cache.ttl.seriesMetadata` | 86400 | A manga read (lookup, enrich, chapter languages) |
+| `cache.ttl.searchResults` | 3600 | A title search |
+| `cache.ttl.coverUrls` | 604800 | A manga's cover list and downloaded cover bytes |
+| `cache.ttl.accessToken` | 900 | An access token's lifetime when MangaDex's answer carries no `expires_in` |
+| `cache.ttl.refreshToken` | 2592000 | A refresh token's lifetime when the answer carries no `refresh_expires_in` |
+| `cache.ttl.default` | 3600 | — |
 
-All `api.*` keys are locked (`readOnly=true`, `isBasic=false`, `category=network`) and may only be changed by updating the package source and releasing a new runtime zip.
-
-| Key | Default | Order | Description |
-|-----|---------|-------|-------------|
-| `api.authUrl` | `https://auth.mangadex.org/realms/mangadex/protocol/openid-connect` | 200 | OpenID Connect authentication base URL |
-| `api.baseUrl` | `https://api.mangadex.org` | 210 | REST API base URL |
-| `api.endpoints.token.template` | `${authUrl}/token` | 220 | OAuth token endpoint |
-| `api.endpoints.refreshToken.template` | `${authUrl}/token` | 230 | OAuth refresh token endpoint |
-| `api.endpoints.manga.template` | `${baseUrl}/manga` | 240 | Manga data endpoint |
-| `api.endpoints.cover.template` | `${baseUrl}/cover` | 250 | Cover image endpoint |
-| `api.endpoints.follow.template` | `${baseUrl}/manga/${id}/follow` | 260 | Follow manga endpoint |
-| `api.endpoints.status.template` | `${baseUrl}/manga/${id}/status` | 270 | Reading status endpoint |
-
----
-
-## Status Mappings
-
-MangaDex uses **string** status values. All `statusMapping.*` keys are locked (`readOnly=true`).
-
-| Host status | MangaDex value | Order |
-|-------------|----------------|-------|
-| `READING` | `"reading"` | 50 |
-| `COMPLETED` | `"completed"` | 60 |
-| `PLAN_TO_READ` | `"plan_to_read"` | 70 |
-| `ON_HOLD` | `"on_hold"` | 80 |
-| `DROPPED` | `"dropped"` | 90 |
-| `RE_READING` | `"re_reading"` | 100 |
-
----
-
-## Standalone Defaults for Shared Keys
-
-These are the Tier 1 standalone defaults for the 44 shared keys required by the canonical contract. Tier 3 may override any of these at runtime for the host's cross-tracker policy.
-
-### Connection
-
-| Key | Default | Order |
-|-----|---------|-------|
-| `connection.timeout.connect` | 5000 ms | 10 |
-| `connection.timeout.request` | 30000 ms | 20 |
-| `connection.timeout.search` | 60000 ms | 30 |
-| `connection.pool.keepAlive` | `true` | 40 |
-| `connection.pool.maxSockets` | 10 | 50 |
-| `connection.pool.maxFreeSockets` | 5 | 60 |
-| `resilience.healthCheck.endpoint` | `"/manga"` | 70 |
-
-### Cache
-
-| Key | Default | Order |
-|-----|---------|-------|
-| `cache.enabled` | `true` | 10 |
-| `cache.provider` | `"memory"` | 20 |
-| `cache.ttl.default` | 3600 s | 30 |
-
-### Rate Limit — Global
-
-| Key | Default | Order | Notes |
-|-----|---------|-------|-------|
-| `rateLimit.global.enabled` | `true` | 100 | |
-| `rateLimit.global.maxConcurrent` | 5 | 110 | |
-| `rateLimit.global.maxPerSecond` | 5 | 120 | MangaDex documented API limit |
-| `rateLimit.global.maxPerMinute` | 60 | 130 | |
-| `rateLimit.global.queueSize` | 50 | 140 | |
-
-### Rate Limit — Per Endpoint (shared)
-
-| Key | Default | Order |
-|-----|---------|-------|
-| `rateLimit.perEndpoint.enabled` | `true` | 200 |
-| `rateLimit.perEndpoint.defaultDelay` | 1000 ms | 210 |
-
-### Retry
-
-| Key | Default | Order |
-|-----|---------|-------|
-| `retry.enabled` | `true` | 300 |
-| `retry.maxAttempts` | 3 | 310 |
-| `retry.backoff.type` | `"exponential"` | 320 |
-| `retry.backoff.initialDelay` | 1000 ms | 330 |
-| `retry.backoff.multiplier` | 2 | 340 |
-| `retry.backoff.maxDelay` | 10000 ms | 350 |
-| `retry.retryableErrors` | `["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", 502, 503, 504, 429]` | 360 |
-
-### Resilience — Circuit Breaker
-
-| Key | Default | Order |
-|-----|---------|-------|
-| `resilience.circuitBreaker.enabled` | `false` (disabled until implemented) | 400 |
-| `resilience.circuitBreaker.failureThreshold` | 5 | 410 |
-| `resilience.circuitBreaker.failureWindow` | 10000 ms | 420 |
-| `resilience.circuitBreaker.openDuration` | 30000 ms | 430 |
-
-### Resilience — Health Check
-
-| Key | Default | Order |
-|-----|---------|-------|
-| `resilience.healthCheck.enabled` | `false` (disabled until implemented) | 500 |
-| `resilience.healthCheck.interval` | 60000 ms | 510 |
+Tokens are never written to the host cache: they live in the SDK's in-memory token cache, keyed by the call's
+`identity`. Content is cached under the call's `scope`.
 
 ### Search
 
-| Key | Default | Order |
-|-----|---------|-------|
-| `search.fuzzyThreshold` | 0.60 | 520 |
-| `search.containmentScore` | 0.85 | 530 |
-| `search.candidateLimit` | 5 | 540 |
-| `search.exactMatchPolicy` | `"first"` | 550 |
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `search.fuzzyThreshold` | 0.6 | The least similarity a non-exact row needs to be a candidate |
+| `search.containmentScore` | 0.85 | The similarity of a title containing the other |
+| `search.candidateLimit` | 5 | The most candidates answered |
+| `search.exactMatchPolicy` | `first` | Cover search over a title and its alternates stops at the first exact match (`first`) or tries all (`highestScore`) |
 
----
+## SDK-read
 
-## Tracker-Scoped Locked Keys
+| Key | Default |
+|-----|---------|
+| `connection.timeout.connect` / `.request` / `.search` | 5000 / 30000 / 60000 ms |
+| `connection.pool.keepAlive` / `.maxSockets` / `.maxFreeSockets` | `true` / 10 / 5 |
+| `retry.enabled` / `.maxAttempts` | `true` / 3 |
+| `retry.backoff.type` / `.initialDelay` / `.maxDelay` / `.multiplier` | `exponential` / 1000 ms / 10000 ms / 2 |
+| `rateLimit.global.enabled` / `.maxConcurrent` / `.maxPerSecond` / `.maxPerMinute` / `.queueSize` | `true` / 5 / 5 / 60 / 50 |
+| `rateLimit.perEndpoint.enabled` / `.defaultDelay` | `true` / 1000 ms (every endpoint without a throttle of its own) |
+| `api.endpoints.<name>.throttle` | token, refreshToken 0; manga, cover, follow, status, feed, atHomeServer 1000 ms |
+| `resilience.circuitBreaker.enabled` / `.failureThreshold` / `.failureWindow` / `.openDuration` | `false` / 5 / 10000 ms / 30000 ms |
 
-These keys encode MangaDex-specific cache and rate-limit topology. They are locked (`readOnly=true`, `isBasic=false`, `category=performance`, `order ≥ 600`) and may only be changed by updating the package.
-
-### Cache TTL
-
-| Key | Default | Order | Description |
-|-----|---------|-------|-------------|
-| `cache.ttl.seriesMetadata` | 86400 s (24 h) | 770 | Manga metadata — stable |
-| `cache.ttl.searchResults` | 3600 s (1 h) | 780 | Search results — changes moderately |
-| `cache.ttl.coverUrls` | 604800 s (7 d) | 790 | Cover image URLs — never change |
-| `cache.ttl.accessToken` | 900 s (15 min) | 800 | OAuth access token — matches API expiry |
-| `cache.ttl.refreshToken` | 2592000 s (30 d) | 810 | OAuth refresh token — long-lived |
-
-### Endpoint-Coupled Rate Limits
-
-Each key pairs with the corresponding `api.endpoints.<name>` entry.
-
-| Key | Default | Order | Endpoint |
-|-----|---------|-------|---------|
-| `rateLimit.perEndpoint.token` | 0 ms | 820 | `api.endpoints.token` |
-| `rateLimit.perEndpoint.refreshToken` | 0 ms | 830 | `api.endpoints.refreshToken` |
-| `rateLimit.perEndpoint.manga` | 1000 ms | 840 | `api.endpoints.manga` |
-| `rateLimit.perEndpoint.cover` | 1000 ms | 850 | `api.endpoints.cover` |
-| `rateLimit.perEndpoint.follow` | 1000 ms | 860 | `api.endpoints.follow` |
-| `rateLimit.perEndpoint.status` | 1000 ms | 870 | `api.endpoints.status` |
-
----
-
-## Settings Contract Compliance
-
-This package passes host validation with 0 errors and 0 warnings against `TRACKER_SETTINGS_CONTRACT_VERSION` 1.0.0.
+The SDK enforces these on every request (the 3.x wrapper read none of them). With the defaults above, an endpoint
+with no throttle of its own (`statusList`, `ratingList`, `rating`, a page download) waits `defaultDelay` between
+calls, and the global limiter allows 60 calls a minute.

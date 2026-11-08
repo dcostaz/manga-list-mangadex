@@ -3,7 +3,7 @@
     "componentName": "MangaDexAPI",
     "description": "MangaDex runtime tracker package settings values (tracker-specific extension)",
     "version": "1.0.0",
-    "lastModified": "2025-11-15T20:14:45.804Z",
+    "lastModified": "2026-11-07T00:00:00.000Z",
     "lifecycle": {
       "bootstrapPhase": "early",
       "dependencies": [],
@@ -70,47 +70,8 @@
     "api.endpoints.feed.throttle": 1000,
     "api.endpoints.atHomeServer.template": "${baseUrl}/at-home/server/${id}",
     "api.endpoints.atHomeServer.throttle": 1000,
-    "statusMapping.READING": "reading",
-    "statusMapping.COMPLETED": "completed",
-    "statusMapping.PLAN_TO_READ": "plan_to_read",
-    "statusMapping.ON_HOLD": "on_hold",
-    "statusMapping.DROPPED": "dropped",
-    "statusMapping.RE_READING": "re_reading",
     "ui.label": "MangaDex",
-    "ui.icon": "images/manga-dex.svg",
-    "ui.credentialsTemplate": [
-      {
-        "key": "username",
-        "label": "Username",
-        "type": "text",
-        "autocomplete": "username",
-        "required": true,
-        "description": "MangaDex account username."
-      },
-      {
-        "key": "password",
-        "label": "Password",
-        "type": "password",
-        "autocomplete": "current-password",
-        "required": true,
-        "description": "Account password used to request tokens."
-      },
-      {
-        "key": "client_id",
-        "label": "Client ID",
-        "type": "text",
-        "required": true,
-        "placeholder": "xxxxxxxx-xxxx",
-        "description": "OAuth client ID from MangaDex developer settings."
-      },
-      {
-        "key": "client_secret",
-        "label": "Client Secret",
-        "type": "password",
-        "required": true,
-        "description": "OAuth client secret for the MangaDex app."
-      }
-    ],
+    "ui.icon": "images/mangadex-icon.svg",
     "connection.timeout.connect": 5000,
     "connection.timeout.request": 30000,
     "connection.timeout.search": 60000,
@@ -123,17 +84,6 @@
     "retry.backoff.initialDelay": 1000,
     "retry.backoff.maxDelay": 10000,
     "retry.backoff.multiplier": 2,
-    "retry.retryableErrors": [
-      "ETIMEDOUT",
-      "ECONNRESET",
-      "ECONNREFUSED",
-      502,
-      503,
-      504,
-      429
-    ],
-    "cache.enabled": true,
-    "cache.provider": "memory",
     "cache.ttl.seriesMetadata": 86400,
     "cache.ttl.searchResults": 3600,
     "cache.ttl.coverUrls": 604800,
@@ -151,18 +101,9 @@
     "rateLimit.global.queueSize": 50,
     "rateLimit.perEndpoint.enabled": true,
     "rateLimit.perEndpoint.defaultDelay": 1000,
-    "rateLimit.perEndpoint.token": 0,
-    "rateLimit.perEndpoint.refreshToken": 0,
-    "rateLimit.perEndpoint.manga": 1000,
-    "rateLimit.perEndpoint.cover": 1000,
-    "rateLimit.perEndpoint.follow": 1000,
-    "rateLimit.perEndpoint.status": 1000,
     "resilience.circuitBreaker.enabled": false,
     "resilience.circuitBreaker.failureThreshold": 5,
     "resilience.circuitBreaker.failureWindow": 10000,
-    "resilience.circuitBreaker.openDuration": 30000,
-    "resilience.healthCheck.enabled": false,
-    "resilience.healthCheck.endpoint": "/manga",
-    "resilience.healthCheck.interval": 60000
+    "resilience.circuitBreaker.openDuration": 30000
   }
 }
