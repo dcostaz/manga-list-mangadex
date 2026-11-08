@@ -136,6 +136,21 @@ function rankRows(rows, wanted, policy) {
     return chosen.slice(0, Math.max(1, policy.candidateLimit));
 }
 
+/**
+ * searchCovers' title mode, one searched title at a time: the best-ranked row of this title's rows against the best so
+ * far — an exact match beats a fuzzy one, a higher similarity beats a lower one of the same kind. `done` says to stop
+ * searching: an exact match under the `first` policy.
+ * @param {RankedRow | null} best @param {any[]} rows @param {string[]} wanted @param {SearchPolicy} policy
+ * @returns {{ best: RankedRow | null, done: boolean }}
+ */
+function pickMatch(best, rows, wanted, policy) {
+    const top = rankRows(rows, wanted, policy)[0];
+    if (!top) return { best, done: false };
+    const better = !best || (top.matchType === 'exact' && best.matchType !== 'exact')
+        || (top.matchType === best.matchType && top.similarity > best.similarity);
+    return { best: better ? top : best, done: policy.exactMatchPolicy !== 'highestScore' && top.matchType === 'exact' };
+}
+
 /** @param {any} manga @param {string} type @returns {any[]} */
 const related = (manga, type) => (manga && Array.isArray(manga.relationships)
     ? manga.relationships.filter((/** @type {any} */ r) => r && r.type === type)
@@ -409,8 +424,9 @@ module.exports = {
     /** Full quality (`data[]`), never `dataSaver[]`; the page number is the reading order. @param {{ chapter: { data: string[] } }} server */
     listPages: (server) => server.chapter.data.map((pageKey, index) => ({ pageKey, pageNumber: index })),
 
-    // exposed for the client (searchCovers' match decision) and the mapping tests
+    // searchCovers' match decision (the explicit binding in plugin-mangadex.cjs) and the mapping tests
     rankRows,
+    pickMatch,
     _similarity: similarity,
     _altTitles: altTitles,
     _chapterLabel: chapterLabel,

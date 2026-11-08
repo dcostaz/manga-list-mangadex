@@ -25,5 +25,27 @@ module.exports = defineTrackerPlugin({
         // source once per entry (a card grid's worth of calls under a 1 s throttle). One call per hundred ids, one
         // result per id in the host's order; a throw becomes every entry's failure in the SDK (§2.1).
         summarizeEntries: async (view, ids) => mapping.summarizeEntries(await view.client.summarizeEntries(ids), ids),
+        // Title mode must decide which manga a title names between two source calls (search, then covers); the decision
+        // is the mapping's, and the client never imports the mapping (L4 does not depend on L3b). Id mode skips the
+        // search. Title and alternates are searched in turn until an exact match (unless search.exactMatchPolicy is
+        // highestScore).
+        searchCovers: async (view, query, options) => {
+            let mangaId = options && typeof options.pluginEntryId === 'string' && options.pluginEntryId ? options.pluginEntryId : '';
+            if (!mangaId) {
+                const titles = [query && query.title, ...(query && Array.isArray(query.altTitles) ? query.altTitles : [])];
+                const wanted = [...new Set(titles.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()))];
+                /** @type {any} */
+                let best = null;
+                for (const title of wanted) {
+                    const found = await view.client.searchTitle(title);
+                    const pick = mapping.pickMatch(best, found.rows, wanted, found.policy);
+                    best = pick.best;
+                    if (pick.done) break;
+                }
+                if (!best) return [];
+                mangaId = String(best.row.id);
+            }
+            return mapping.searchCovers({ mangaId, covers: await view.client.covers(mangaId) }, query, options);
+        },
     },
 });

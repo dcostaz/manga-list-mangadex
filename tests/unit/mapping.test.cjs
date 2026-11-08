@@ -174,3 +174,14 @@ test('searchCovers: every cover by volume (none last), keyed mangaId/fileName wi
 test('listPages: data[] in reading order, numbered from 0', () => {
     assert.deepEqual(mapping.listPages({ chapter: { data: ['p1.png', 'p2.png'] } }), [{ pageKey: 'p1.png', pageNumber: 0 }, { pageKey: 'p2.png', pageNumber: 1 }]);
 });
+
+test('pickMatch: an exact match beats a fuzzy one and stops the search under "first", not under "highestScore"', () => {
+    const fuzzy = mapping.pickMatch(null, [row('f', 'Weak Hero Primary')], ['Weak Primary'], POLICY);
+    assert.equal(fuzzy.best.row.id, 'f');
+    assert.equal(fuzzy.done, false);
+    const exact = mapping.pickMatch(fuzzy.best, [row('e', 'Weak Primary')], ['Weak Primary'], POLICY);
+    assert.deepEqual([exact.best.row.id, exact.done], ['e', true]);
+    assert.equal(mapping.pickMatch(fuzzy.best, [row('e', 'Weak Primary')], ['Weak Primary'], { ...POLICY, exactMatchPolicy: 'highestScore' }).done, false);
+    assert.equal(mapping.pickMatch(exact.best, [row('g', 'Weak Primary Hero')], ['Weak Primary'], POLICY).best.row.id, 'e', 'a fuzzy row never displaces an exact one');
+    assert.deepEqual(mapping.pickMatch(null, [], ['x'], POLICY), { best: null, done: false });
+});

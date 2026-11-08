@@ -3,6 +3,7 @@
 /**
  * L4 — MangaDex's client: REACH and EXCHANGE (Plan-2026Q4-tracker-plugin-standardization §1.2).
  *
+ * Source calls only: this file imports nothing from the mapping (L4 never depends on L3b; a unit test holds it).
  * Talks to api.mangadex.org (and its auth realm, its uploads host and its at-home servers) and returns MangaDex's own
  * shapes. Endpoints are the settings' templates; every request goes through `view.http`, bound per call by the SDK
  * to the call's credential, identity, scope and signal. One source call per contract method, named after it (the
@@ -25,9 +26,6 @@
  */
 
 const { PluginError, isPluginError } = require('@manga-list/plugin-sdk');
-// searchCovers' title mode must decide which manga a title names before its second source call; the decision is the
-// mapping's pure ranking (the same one search() answers with), never a second copy here.
-const { rankRows } = require('./mapping-mangadex.cjs');
 
 const UPLOADS = 'https://uploads.mangadex.org';
 /** The `includes[]` a manga read asks for: names of authors and artists, and the main cover's file name. */
@@ -203,7 +201,10 @@ function createClient({ settings, utils, addNormalizer }) {
         const n = Number(settings[key]);
         return settings[key] !== undefined && settings[key] !== null && Number.isFinite(n) ? n : fallback;
     };
-    /** @type {import('./mapping-mangadex.cjs').SearchPolicy} */
+    /**
+     * The search.* settings, handed to the mapping with the rows it ranks.
+     * @type {{ fuzzyThreshold: number, containmentScore: number, candidateLimit: number, exactMatchPolicy: 'first' | 'highestScore' }}
+     */
     const policy = {
         fuzzyThreshold: num('search.fuzzyThreshold', 0.6),
         containmentScore: num('search.containmentScore', 0.85),
@@ -314,29 +315,18 @@ function createClient({ settings, utils, addNormalizer }) {
             /** @param {string} id */
             enrich: (id) => manga(id, { useCache: true }),
             /**
-             * Id mode when the host has the Reference; title mode searches the title and its alternates, stopping at
-             * an exact match unless `search.exactMatchPolicy` is `highestScore`, and takes the best-ranked manga.
-             * @param {{ title?: string, altTitles?: string[] }} query @param {{ pluginEntryId?: string, limit?: number }} [options]
+             * One title search's raw rows (from the scope's cache when fresh) with the search.* settings — for
+             * searchCovers' title mode, which the explicit binding in plugin-mangadex.cjs ranks through the mapping.
+             * @param {string} title
              */
-            async searchCovers(query, options = {}) {
-                let mangaId = options && typeof options.pluginEntryId === 'string' ? options.pluginEntryId : '';
-                if (!mangaId) {
-                    const wanted = [...new Set([str(query && query.title), ...((query && Array.isArray(query.altTitles)) ? query.altTitles.map(str) : [])].filter(Boolean))];
-                    /** @type {import('./mapping-mangadex.cjs').RankedRow | null} */
-                    let best = null;
-                    for (const title of wanted) {
-                        const top = rankRows((await searchRows(title, true)).rows, wanted, policy)[0];
-                        if (!top) continue;
-                        if (!best || (top.matchType === 'exact' && best.matchType !== 'exact')
-                            || (top.matchType === best.matchType && top.similarity > best.similarity)) best = top;
-                        if (policy.exactMatchPolicy !== 'highestScore' && top.matchType === 'exact') break;
-                    }
-                    if (!best) return { mangaId: null, covers: [] };
-                    mangaId = String(best.row.id);
-                }
-                return { mangaId, covers: await covers(mangaId) };
+            async searchTitle(title) {
+                const t = typeof title === 'string' ? title.trim() : '';
+                if (!t) return { rows: [], policy };
+                return { rows: (await searchRows(t, true)).rows, policy };
             },
-            /** coverId is `mangaId/fileName` (what searchCovers answers). @param {string} coverId */
+            /** Every cover MangaDex holds for a known manga (raw Cover resources). @param {string} mangaId */
+            covers: (mangaId) => covers(String(mangaId)),
+            /** coverId is `mangaId/fileName` (what searchCovers answers, from the mapping). @param {string} coverId */
             async downloadCover(coverId) {
                 const [mangaId, fileName] = typeof coverId === 'string' ? coverId.split('/') : [];
                 if (!mangaId || !fileName) throw new PluginError('not_found', `MangaDex cover id '${coverId}' is not 'mangaId/fileName'`);
