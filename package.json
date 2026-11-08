@@ -1,14 +1,14 @@
 {
   "name": "manga-list-mangadex",
-  "version": "1.0.0",
+  "version": "4.0.0",
   "description": "Runtime tracker package source and builder for MangaDex",
-  "main": "src/runtime/apiwrappers/reg-mangadex/plugin-module.cjs",
+  "main": "src/runtime/apiwrappers/reg-mangadex/plugin-mangadex.cjs",
   "scripts": {
     "build": "node scripts/build-runtime-plugin-package.cjs",
-    "build:runtime": "node scripts/build-runtime-plugin-package.cjs",
-    "test": "node --test tests/unit/*.test.cjs",
-    "test:auth:interactive": "node scripts/run-auth-integration-test.cjs",
-    "test:search:interactive": "node scripts/run-search-integration-test.cjs"
+    "test": "node --test \"tests/unit/*.test.cjs\"",
+    "typecheck": "tsc --noEmit",
+    "check:nothing-lost": "node scripts/check-nothing-lost.cjs",
+    "test:integration": "node --test \"tests/integration/*.manual.cjs\""
   },
   "keywords": [
     "manga",
@@ -20,5 +20,11 @@
   "dependencies": {
     "archiver": "^7.0.1",
     "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@manga-list/plugin-sdk": "file:../manga-list-plugin-sdk",
+    "@types/archiver": "^6.0.2",
+    "@types/node": "^26.0.0",
+    "typescript": "^6.0.3"
   }
 }

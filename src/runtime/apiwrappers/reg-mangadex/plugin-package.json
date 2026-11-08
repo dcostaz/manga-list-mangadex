@@ -1,30 +1,88 @@
 {
   "pluginName": "mangadex",
-  "pluginType": ["tracker"],
-  "pluginContractVersion": "3.0.0",
+  "displayName": "MangaDex",
+  "pluginType": "tracker",
+  "pluginContractVersion": "4.0.0",
   "hostApiVersion": "1.0.0",
   "iconPath": "images/mangadex-icon.svg",
-  "capabilities": ["credential", "search.query", "search.lookup", "enrich", "enrich.cover", "sync.pull", "sync.push", "sync.list", "subscribe.add", "subscribe.remove", "watch.entry", "watch.list", "watch.summary", "retrieve.chapterList", "retrieve.chapterPages"],
+  "capabilities": [
+    "credential",
+    "search.query",
+    "search.lookup",
+    "enrich",
+    "enrich.cover",
+    "sync.pull",
+    "sync.push",
+    "sync.list",
+    "subscribe.add",
+    "subscribe.remove",
+    "watch.entry",
+    "watch.list",
+    "watch.summary",
+    "retrieve.chapterList",
+    "retrieve.chapterPages"
+  ],
   "entrypoints": {
-    "pluginModule": "apiwrappers/reg-mangadex/plugin-module.cjs",
+    "pluginModule": "apiwrappers/reg-mangadex/plugin-mangadex.cjs",
     "settingsFile": "apiwrappers/reg-mangadex/mangadex-api-settings.json"
   },
-  "retrieveOptions": {
-    "requiresCredential": false
-  },
   "syncOptions": {
-    "searchRequiresAuth": true,
     "statusVocabulary": {
-      "READING":      "reading",
-      "COMPLETED":    "completed",
-      "PLAN_TO_READ": "plan_to_read",
-      "ON_HOLD":      "paused",
-      "DROPPED":      "dropped",
-      "RE_READING":   "reading"
+      "push": {
+        "READING": "reading",
+        "COMPLETED": "completed",
+        "PLAN_TO_READ": "plan_to_read",
+        "ON_HOLD": "on_hold",
+        "DROPPED": "dropped",
+        "RE_READING": "re_reading"
+      },
+      "pull": {
+        "reading": "READING",
+        "completed": "COMPLETED",
+        "plan_to_read": "PLAN_TO_READ",
+        "on_hold": "ON_HOLD",
+        "dropped": "DROPPED",
+        "re_reading": "RE_READING"
+      }
     },
     "progressAxes": {
-      "pull": ["rating"],
-      "push": ["rating"]
+      "pull": [{ "axis": "rating", "scale": "integer" }],
+      "push": [{ "axis": "rating", "scale": "integer" }]
     }
+  },
+  "searchOptions": { "requiresCredential": true },
+  "retrieveOptions": { "requiresCredential": false },
+  "credentialOptions": {
+    "fields": [
+      {
+        "key": "username",
+        "label": "Username",
+        "type": "text",
+        "required": true,
+        "description": "MangaDex account username."
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "type": "password",
+        "required": true,
+        "description": "Account password, exchanged for MangaDex access tokens (password grant)."
+      },
+      {
+        "key": "client_id",
+        "label": "Client ID",
+        "type": "text",
+        "required": true,
+        "placeholder": "xxxxxxxx-xxxx",
+        "description": "The personal API client's id, from MangaDex's API Clients settings page."
+      },
+      {
+        "key": "client_secret",
+        "label": "Client Secret",
+        "type": "password",
+        "required": true,
+        "description": "The personal API client's secret."
+      }
+    ]
   }
 }

@@ -3,7 +3,7 @@
     "componentName": "MangaDexAPI",
     "description": "MangaDex runtime tracker package settings definition (tracker-specific extension)",
     "version": "1.0.0",
-    "lastModified": "2026-05-24T18:37:44.217Z",
+    "lastModified": "2026-11-07T00:00:00.000Z",
     "lifecycle": {
       "bootstrapPhase": "early",
       "dependencies": [],
@@ -20,7 +20,7 @@
       {
         "id": "network",
         "label": "Network & API",
-        "description": "Connection settings, health check endpoint, and API endpoint reference",
+        "description": "Connection settings and API endpoint reference",
         "order": 20,
         "icon": "cloud"
       },
@@ -255,66 +255,6 @@
       "category": "performance",
       "order": 890
     },
-    "statusMapping.READING": {
-      "type": "string",
-      "required": true,
-      "default": "reading",
-      "description": "MangaDex reading status value",
-      "readOnly": true,
-      "isBasic": true,
-      "category": "general",
-      "order": 50
-    },
-    "statusMapping.COMPLETED": {
-      "type": "string",
-      "required": true,
-      "default": "completed",
-      "description": "MangaDex completed status value",
-      "readOnly": true,
-      "isBasic": true,
-      "category": "general",
-      "order": 60
-    },
-    "statusMapping.PLAN_TO_READ": {
-      "type": "string",
-      "required": true,
-      "default": "plan_to_read",
-      "description": "MangaDex plan to read status value",
-      "readOnly": true,
-      "isBasic": true,
-      "category": "general",
-      "order": 70
-    },
-    "statusMapping.ON_HOLD": {
-      "type": "string",
-      "required": true,
-      "default": "on_hold",
-      "description": "MangaDex on hold status value",
-      "readOnly": true,
-      "isBasic": true,
-      "category": "general",
-      "order": 80
-    },
-    "statusMapping.DROPPED": {
-      "type": "string",
-      "required": true,
-      "default": "dropped",
-      "description": "MangaDex dropped status value",
-      "readOnly": true,
-      "isBasic": true,
-      "category": "general",
-      "order": 90
-    },
-    "statusMapping.RE_READING": {
-      "type": "string",
-      "required": true,
-      "default": "re_reading",
-      "description": "MangaDex re-reading status value",
-      "readOnly": true,
-      "isBasic": true,
-      "category": "general",
-      "order": 100
-    },
     "ui.label": {
       "type": "string",
       "required": true,
@@ -328,54 +268,12 @@
     "ui.icon": {
       "type": "string",
       "required": true,
-      "default": "images/manga-dex.svg",
+      "default": "images/mangadex-icon.svg",
       "description": "Path to icon image",
       "readOnly": true,
       "isBasic": false,
       "category": "general",
       "order": 20
-    },
-    "ui.credentialsTemplate": {
-      "type": "array",
-      "required": true,
-      "default": [
-        {
-          "key": "username",
-          "label": "Username",
-          "type": "text",
-          "autocomplete": "username",
-          "required": true,
-          "description": "MangaDex account username."
-        },
-        {
-          "key": "password",
-          "label": "Password",
-          "type": "password",
-          "autocomplete": "current-password",
-          "required": true,
-          "description": "Account password used to request tokens."
-        },
-        {
-          "key": "client_id",
-          "label": "Client ID",
-          "type": "text",
-          "required": true,
-          "placeholder": "xxxxxxxx-xxxx",
-          "description": "OAuth client ID from MangaDex developer settings."
-        },
-        {
-          "key": "client_secret",
-          "label": "Client Secret",
-          "type": "password",
-          "required": true,
-          "description": "OAuth client secret for the MangaDex app."
-        }
-      ],
-      "description": "Credential template for tracker auth prompts",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "general",
-      "order": 30
     },
     "credentials.primary": {
       "type": "credential",
@@ -569,53 +467,6 @@
       "category": "performance",
       "order": 340
     },
-    "retry.retryableErrors": {
-      "type": "array",
-      "required": true,
-      "default": [
-        "ETIMEDOUT",
-        "ECONNRESET",
-        "ECONNREFUSED",
-        502,
-        503,
-        504,
-        429
-      ],
-      "description": "Retryable HTTP status codes and network errors",
-      "readOnly": false,
-      "isBasic": false,
-      "category": "performance",
-      "order": 360
-    },
-    "cache.enabled": {
-      "type": "boolean",
-      "required": true,
-      "default": true,
-      "description": "Enable response caching",
-      "readOnly": false,
-      "isBasic": true,
-      "category": "performance",
-      "order": 10
-    },
-    "cache.provider": {
-      "type": "string",
-      "required": true,
-      "default": "memory",
-      "description": "Cache provider: system (inherit host), memory, file, redis, or none",
-      "validation": {
-        "enum": [
-          "system",
-          "memory",
-          "file",
-          "redis",
-          "none"
-        ]
-      },
-      "readOnly": false,
-      "isBasic": false,
-      "category": "performance",
-      "order": 20
-    },
     "cache.ttl.seriesMetadata": {
       "type": "number",
       "required": true,
@@ -681,7 +532,10 @@
       "required": true,
       "default": 0.6,
       "description": "Minimum title similarity score (0-1) to classify a candidate as a fuzzy match",
-      "validation": { "min": 0.01, "max": 0.99 },
+      "validation": {
+        "min": 0.01,
+        "max": 0.99
+      },
       "readOnly": false,
       "isBasic": true,
       "category": "performance",
@@ -692,7 +546,10 @@
       "required": true,
       "default": 0.85,
       "description": "Similarity score assigned when one title slug contains the other, before Jaccard calculation",
-      "validation": { "min": 0.5, "max": 1.0 },
+      "validation": {
+        "min": 0.5,
+        "max": 1
+      },
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
@@ -703,7 +560,10 @@
       "required": true,
       "default": 5,
       "description": "Maximum ranked title candidates retained per search snapshot",
-      "validation": { "min": 1, "max": 25 },
+      "validation": {
+        "min": 1,
+        "max": 25
+      },
       "readOnly": false,
       "isBasic": true,
       "category": "performance",
@@ -714,7 +574,12 @@
       "required": true,
       "default": "first",
       "description": "Stop on first exact title match (first) or evaluate all variants for best rank (highestScore)",
-      "validation": { "enum": ["first", "highestScore"] },
+      "validation": {
+        "enum": [
+          "first",
+          "highestScore"
+        ]
+      },
       "readOnly": false,
       "isBasic": false,
       "category": "performance",
@@ -806,66 +671,6 @@
       "category": "performance",
       "order": 210
     },
-    "rateLimit.perEndpoint.token": {
-      "type": "number",
-      "required": false,
-      "default": 0,
-      "description": "Token endpoint delay (milliseconds)",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "performance",
-      "order": 820
-    },
-    "rateLimit.perEndpoint.refreshToken": {
-      "type": "number",
-      "required": false,
-      "default": 0,
-      "description": "Refresh token endpoint delay (milliseconds)",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "performance",
-      "order": 830
-    },
-    "rateLimit.perEndpoint.manga": {
-      "type": "number",
-      "required": false,
-      "default": 1000,
-      "description": "Manga endpoint delay (milliseconds)",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "performance",
-      "order": 840
-    },
-    "rateLimit.perEndpoint.cover": {
-      "type": "number",
-      "required": false,
-      "default": 1000,
-      "description": "Cover endpoint delay (milliseconds)",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "performance",
-      "order": 850
-    },
-    "rateLimit.perEndpoint.follow": {
-      "type": "number",
-      "required": false,
-      "default": 1000,
-      "description": "Follow endpoint delay (milliseconds)",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "performance",
-      "order": 860
-    },
-    "rateLimit.perEndpoint.status": {
-      "type": "number",
-      "required": false,
-      "default": 1000,
-      "description": "Status endpoint delay (milliseconds)",
-      "readOnly": true,
-      "isBasic": false,
-      "category": "performance",
-      "order": 870
-    },
     "resilience.circuitBreaker.enabled": {
       "type": "boolean",
       "required": true,
@@ -917,40 +722,6 @@
       "isBasic": false,
       "category": "performance",
       "order": 430
-    },
-    "resilience.healthCheck.enabled": {
-      "type": "boolean",
-      "required": true,
-      "default": false,
-      "description": "Enable periodic health checks (P2 - MEDIUM: disabled until Phase 10.8)",
-      "readOnly": false,
-      "isBasic": false,
-      "category": "performance",
-      "order": 500
-    },
-    "resilience.healthCheck.endpoint": {
-      "type": "string",
-      "required": false,
-      "default": "/manga",
-      "description": "Endpoint to use for health checks (P2)",
-      "readOnly": false,
-      "isBasic": false,
-      "category": "network",
-      "order": 70
-    },
-    "resilience.healthCheck.interval": {
-      "type": "number",
-      "required": true,
-      "default": 60000,
-      "description": "Health check interval in milliseconds (P2)",
-      "validation": {
-        "min": 10000,
-        "max": 600000
-      },
-      "readOnly": false,
-      "isBasic": false,
-      "category": "performance",
-      "order": 510
     }
   }
 }
